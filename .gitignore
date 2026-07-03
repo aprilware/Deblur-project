@@ -1,0 +1,18 @@
+## Build outputs
+bin/
+obj/
+
+## Visual Studio state
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Rider / VS Code
+.idea/
+.vscode/
+
+## OS
+Thumbs.db
+.DS_Store
