@@ -74,6 +74,7 @@ public partial class PreviewCanvas : UserControl
         var (angle, length) = ToImageSpace(_dragStartScreen.Value, end);
         DragCommitted?.Invoke(this, new ArrowDragEventArgs { Angle = angle, Length = length });
         _dragStartScreen = null;
+        ArrowShaft.Visibility = ArrowHead.Visibility = Visibility.Collapsed;
         ReleaseMouseCapture();
     }
 
