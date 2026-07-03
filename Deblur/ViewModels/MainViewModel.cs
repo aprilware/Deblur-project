@@ -44,8 +44,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         var full = ImageCodec.DecodeFromBytes(bytes);
         _originalFullRes = full;
-        // Compute proxy: target <= 1.5 MP, aspect-preserving.
-        const int maxProxyPixels = 1_500_000;
+        // Keep proxy dims under ~920 px so FFT pads to 1024 (not 2048) — 4x faster interactive preview.
+        const int maxProxyPixels = 400_000;
         double scale = 1.0;
         int px = full.Width * full.Height;
         if (px > maxProxyPixels) scale = Math.Sqrt((double)maxProxyPixels / px);
@@ -56,7 +56,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         PreviewBitmap = ImageBufferInterop.NewCompatibleBitmap(pw, ph);
         _runner.SetProxy(_proxy);
-        PushCurrentParams();
+        Reset();
     }
 
     public void UpdateKernel(float angle, float length)
