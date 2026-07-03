@@ -13,6 +13,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        PreviewDragEnter += OnFileDragEnter;
+        Drop += OnFileDrop;
     }
 
     private void OnOpenClick(object sender, RoutedEventArgs e)
@@ -92,11 +94,43 @@ public partial class MainWindow : Window
     private void OnPreviewDragCommitted(object? sender, ArrowDragEventArgs e)
         => Vm.UpdateKernel(e.Angle, e.Length);
 
+    private void OnFileDragEnter(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnFileDrop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+        if (files.Length == 0) return;
+        LoadFile(files[0]);
+    }
+
     private void LoadFile(string path)
     {
         try
         {
             var bytes = File.ReadAllBytes(path);
+
+            // Pre-check pixel count via lightweight decode.
+            using (var stream = new MemoryStream(bytes))
+            {
+                var frame = System.Windows.Media.Imaging.BitmapFrame.Create(stream,
+                    System.Windows.Media.Imaging.BitmapCreateOptions.DelayCreation,
+                    System.Windows.Media.Imaging.BitmapCacheOption.None);
+                long pixels = (long)frame.PixelWidth * frame.PixelHeight;
+                if (pixels > 100_000_000)
+                {
+                    double mp = pixels / 1_000_000.0;
+                    var choice = MessageBox.Show(this,
+                        $"Image is very large ({mp:0.0} MP); may be slow. Continue?",
+                        "Large image", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    if (choice != MessageBoxResult.Yes) return;
+                }
+            }
+
             Vm.LoadImageFromBytes(bytes);
             Vm.CurrentFilePath = path;
             Vm.StatusMessage = System.IO.Path.GetFileName(path);
@@ -105,6 +139,11 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this, $"Couldn't read \"{System.IO.Path.GetFileName(path)}\": {ex.Message}",
                 "Open failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (OutOfMemoryException)
+        {
+            MessageBox.Show(this, "Ran out of memory. Try a smaller image.",
+                "Out of memory", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         catch (Exception ex)
         {
