@@ -15,10 +15,12 @@ public partial class MainWindow : Window
         InitializeComponent();
         PreviewDragEnter += OnFileDragEnter;
         Drop += OnFileDrop;
+        Closed += (_, __) => (DataContext as IDisposable)?.Dispose();
     }
 
     private void OnOpenClick(object sender, RoutedEventArgs e)
     {
+        if (Vm.IsBusy) return;
         var dlg = new OpenFileDialog
         {
             Filter = "Images|*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff",
@@ -36,6 +38,7 @@ public partial class MainWindow : Window
             MessageBox.Show(this, "Open an image first.", "Nothing to render", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
+        Vm.IsBusy = true;
         Busy.Show("Rendering full resolution…");
         try
         {
@@ -49,7 +52,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this, ex.Message, "Render failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
-        finally { Busy.Hide(); }
+        finally { Busy.Hide(); Vm.IsBusy = false; }
     }
 
     private async void OnSaveAsClick(object sender, RoutedEventArgs e)
@@ -67,6 +70,7 @@ public partial class MainWindow : Window
         };
         if (dlg.ShowDialog(this) != true) return;
 
+        Vm.IsBusy = true;
         Busy.Show("Rendering and saving…");
         try
         {
@@ -83,7 +87,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this, ex.Message, "Save failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
-        finally { Busy.Hide(); }
+        finally { Busy.Hide(); Vm.IsBusy = false; }
     }
     private void OnExitClick(object sender, RoutedEventArgs e) => Close();
     private void OnResetClick(object sender, RoutedEventArgs e) => Vm.Reset();
@@ -102,6 +106,7 @@ public partial class MainWindow : Window
 
     private void OnFileDrop(object sender, DragEventArgs e)
     {
+        if (Vm.IsBusy) return;
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
         var files = (string[])e.Data.GetData(DataFormats.FileDrop);
         if (files.Length == 0) return;
