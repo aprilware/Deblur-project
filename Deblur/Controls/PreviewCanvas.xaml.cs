@@ -44,6 +44,8 @@ public partial class PreviewCanvas : UserControl
     {
         var self = (PreviewCanvas)d;
         self.PreviewImage.Source = (WriteableBitmap?)e.NewValue;
+        self._dragStartScreen = null;
+        self.ArrowShaft.Visibility = self.ArrowHead.Visibility = Visibility.Collapsed;
     }
 
     private void OnMouseDown(object sender, MouseButtonEventArgs e)
