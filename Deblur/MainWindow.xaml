@@ -62,9 +62,24 @@
                         </StackPanel>
                     </Grid>
 
+                    <Grid Margin="0,12,0,0" Visibility="{Binding IsOutOfFocusSelected, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="Radius (px, proxy)" Margin="0,4,0,0"/>
+                            <Slider Minimum="0" Maximum="50" Value="{Binding Radius}"/>
+                            <TextBlock Text="{Binding Radius, StringFormat={}{0:0.0}}" HorizontalAlignment="Right"/>
+
+                            <TextBlock Text="Smoothness" Margin="0,8,0,0"/>
+                            <Slider Minimum="0.0001" Maximum="0.1" SmallChange="0.0005" Value="{Binding Smoothness}"/>
+                            <TextBlock Text="{Binding Smoothness, StringFormat={}{0:0.0000}}" HorizontalAlignment="Right"/>
+
+                            <Button Content="Reset" Margin="0,12,0,0" Click="OnResetClick"/>
+                            <Button Content="Render full resolution" Margin="0,8,0,0" Click="OnRenderFullClick"/>
+                        </StackPanel>
+                    </Grid>
+
                     <TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
-                               Visibility="{Binding IsComingSoon, Converter={StaticResource BoolToVis}}"
-                               Text="This blur type will be supported in a future phase. Select 'Motion' to try the current build."/>
+                               Visibility="{Binding IsGaussianSelected, Converter={StaticResource BoolToVis}}"
+                               Text="This blur type will be supported in a future phase. Select 'Motion' or 'OutOfFocus' to try the current build."/>
 
                     <TextBlock Margin="0,20,0,0" Text="{Binding StatusMessage}" TextWrapping="Wrap" Foreground="#888"/>
                 </StackPanel>
