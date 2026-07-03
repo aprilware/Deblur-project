@@ -14,7 +14,7 @@ public class WienerDeconvolverTests
         // harmonics for Wiener to recover.
         var original = SyntheticImages.Checkerboard(128, 128, 32);
         var psf = new MotionBlurKernel().Build(
-            new KernelParams(BlurType.Motion, 30f, 12f, 0));
+            new KernelParams(BlurType.Motion, 30f, 12f, 0, 0f));
         var blurred = SyntheticImages.Convolve(original, psf);
         var noisy = SyntheticImages.AddGaussianNoise(blurred, 0.005f, seed: 42);
 
@@ -29,9 +29,9 @@ public class WienerDeconvolverTests
     {
         var original = SyntheticImages.Checkerboard(128, 128, 8);
         var truePsf = new MotionBlurKernel().Build(
-            new KernelParams(BlurType.Motion, 30f, 12f, 0));
+            new KernelParams(BlurType.Motion, 30f, 12f, 0, 0f));
         var wrongPsf = new MotionBlurKernel().Build(
-            new KernelParams(BlurType.Motion, 90f, 12f, 0));
+            new KernelParams(BlurType.Motion, 90f, 12f, 0, 0f));
         var blurred = SyntheticImages.Convolve(original, truePsf);
 
         var deconv = new WienerDeconvolver().Apply(
@@ -47,7 +47,7 @@ public class WienerDeconvolverTests
     {
         var original = SyntheticImages.Checkerboard(128, 128, 8);
         var psf = new MotionBlurKernel().Build(
-            new KernelParams(BlurType.Motion, 0f, 8f, 0));
+            new KernelParams(BlurType.Motion, 0f, 8f, 0, 0f));
         var blurred = SyntheticImages.Convolve(original, psf);
         var deconv = new WienerDeconvolver().Apply(
             blurred, psf, new DeconvolutionParams(K: 0.005f));
@@ -70,7 +70,7 @@ public class WienerDeconvolverTests
     {
         var original = SyntheticImages.Checkerboard(64, 64, 4);
         var psf = new MotionBlurKernel().Build(
-            new KernelParams(BlurType.Motion, 22f, 100f, 0));
+            new KernelParams(BlurType.Motion, 22f, 100f, 0, 0f));
         var deconv = new WienerDeconvolver().Apply(
             original, psf, new DeconvolutionParams(K: 1e-6f));
 

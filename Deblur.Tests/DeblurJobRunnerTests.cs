@@ -44,7 +44,7 @@ public class DeblurJobRunnerTests
         };
 
         for (int i = 0; i < 100; i++)
-            runner.Request(new KernelParams(BlurType.Motion, Angle: i, Length: 5f, Smoothness: 0.005f));
+            runner.Request(new KernelParams(BlurType.Motion, Angle: i, Length: 5f, Smoothness: 0.005f, Radius: 0f));
 
         // Wait for the last coalesced job to complete.
         var deadline = DateTime.UtcNow.AddSeconds(2);
@@ -70,7 +70,7 @@ public class DeblurJobRunnerTests
         var full = SyntheticImages.Checkerboard(200, 200, 10);
         // proxyScale = proxyW / fullW = 50 / 200 = 0.25 → length multiplier = 4x
         await runner.RenderFullAsync(full,
-            new KernelParams(BlurType.Motion, 45f, 10f, 0.005f), proxyScale: 0.25f);
+            new KernelParams(BlurType.Motion, 45f, 10f, 0.005f, 0f), proxyScale: 0.25f);
 
         Assert.Contains(kernel.Seen, p => Math.Abs(p.Length - 40f) < 0.001f);
     }

@@ -85,7 +85,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public async Task EnsureFullResRenderedAsync(IProgress<double> progress)
     {
         if (_originalFullRes is null) throw new InvalidOperationException("No image loaded.");
-        var current = new KernelParams(BlurType.Motion, Angle, Length, Smoothness);
+        var current = new KernelParams(BlurType.Motion, Angle, Length, Smoothness, 0f);
         if (_fullResBuffer is not null && _fullResParams.Equals(current))
         {
             progress.Report(1.0);
@@ -112,7 +112,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void PushCurrentParams()
     {
         if (_proxy is null) return;
-        _runner.Request(new KernelParams(BlurType.Motion, Angle, Length, Smoothness));
+        _runner.Request(new KernelParams(BlurType.Motion, Angle, Length, Smoothness, 0f));
     }
 
     private void OnProxyReady(object? sender, ProxyReadyEventArgs e)
