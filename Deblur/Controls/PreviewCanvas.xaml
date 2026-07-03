@@ -1,0 +1,14 @@
+<UserControl x:Class="Deblur.Controls.PreviewCanvas"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#222">
+    <Grid>
+        <Image x:Name="PreviewImage"
+               Stretch="Uniform"
+               RenderOptions.BitmapScalingMode="HighQuality"/>
+        <Canvas x:Name="OverlayCanvas" IsHitTestVisible="False">
+            <Line x:Name="ArrowShaft" Stroke="#FFEE33" StrokeThickness="2" Visibility="Collapsed"/>
+            <Polygon x:Name="ArrowHead" Fill="#FFEE33" Visibility="Collapsed"/>
+        </Canvas>
+    </Grid>
+</UserControl>
