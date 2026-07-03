@@ -47,12 +47,13 @@ public sealed class WienerDeconvolver : IDeconvolver
     private static float[] ProcessChannel(
         float[] channel, int w, int h, int pad, int fftSize, Complex[,] wienerNumer)
     {
-        // Reflect-pad into fftSize x fftSize float buffer; zero-fill outside padded region.
+        // Fill the ENTIRE fftSize x fftSize buffer via reflection so circular
+        // convolution has no zero-region discontinuity.
         var padded = new float[fftSize, fftSize];
-        for (int y = 0; y < h + 2 * pad; y++)
+        for (int y = 0; y < fftSize; y++)
         {
             int sy = ReflectIndex(y - pad, h);
-            for (int x = 0; x < w + 2 * pad; x++)
+            for (int x = 0; x < fftSize; x++)
             {
                 int sx = ReflectIndex(x - pad, w);
                 padded[y, x] = channel[sy * w + sx];
