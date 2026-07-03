@@ -9,7 +9,7 @@ public sealed class ProxyReadyEventArgs : EventArgs
 
 public sealed class DeblurJobRunner : IDisposable
 {
-    private readonly IBlurKernel _kernel;
+    private readonly IReadOnlyDictionary<BlurType, IBlurKernel> _kernels;
     private readonly IDeconvolver _deconvolver;
     private readonly Thread _worker;
     private readonly ManualResetEventSlim _signal = new(false);
@@ -26,9 +26,11 @@ public sealed class DeblurJobRunner : IDisposable
         get { lock (_lock) return _pending.HasValue; }
     }
 
-    public DeblurJobRunner(IBlurKernel kernel, IDeconvolver deconvolver)
+    public DeblurJobRunner(
+        IReadOnlyDictionary<BlurType, IBlurKernel> kernels,
+        IDeconvolver deconvolver)
     {
-        _kernel = kernel;
+        _kernels = kernels;
         _deconvolver = deconvolver;
         _worker = new Thread(WorkerLoop) { IsBackground = true, Name = "DeblurWorker" };
         _worker.Start();
@@ -41,7 +43,7 @@ public sealed class DeblurJobRunner : IDisposable
 
     public void Request(KernelParams p)
     {
-        lock (_lock) _pending = p;   // overwrite: only latest matters
+        lock (_lock) _pending = p;
         _signal.Set();
     }
 
@@ -51,19 +53,31 @@ public sealed class DeblurJobRunner : IDisposable
         return Task.Run(() =>
         {
             progress?.Report(0.1);
-            var scaledLength = p.Length / Math.Max(proxyScale, 1e-6f);
-            if (scaledLength < 1f)
+            float scaleInv = 1f / Math.Max(proxyScale, 1e-6f);
+            var scaledParams = p with
+            {
+                Length = p.Length * scaleInv,
+                Radius = p.Radius * scaleInv,
+            };
+            if (IsNoOp(scaledParams))
             {
                 progress?.Report(1.0);
                 return fullRes.Clone();
             }
-            var psf = _kernel.Build(p with { Length = scaledLength });
+            var psf = _kernels[scaledParams.Type].Build(scaledParams);
             progress?.Report(0.3);
             var result = _deconvolver.Apply(fullRes, psf, new DeconvolutionParams(K: p.Smoothness));
             progress?.Report(1.0);
             return result;
         });
     }
+
+    private static bool IsNoOp(KernelParams p) => p.Type switch
+    {
+        BlurType.Motion     => p.Length < 1f,
+        BlurType.OutOfFocus => p.Radius < 1f,
+        _                   => true,
+    };
 
     private void WorkerLoop()
     {
@@ -85,19 +99,17 @@ public sealed class DeblurJobRunner : IDisposable
                 }
 
                 ImageBuffer deconv;
-                if (p.Length < 1f)
+                if (IsNoOp(p))
                 {
-                    // No motion → skip Wiener; show the untouched proxy.
                     deconv = proxy;
                 }
                 else
                 {
-                    var psf = _kernel.Build(p);
+                    var psf = _kernels[p.Type].Build(p);
                     deconv = _deconvolver.Apply(
                         proxy, psf, new DeconvolutionParams(K: p.Smoothness));
                 }
 
-                // Convert to BGRA.
                 int w = deconv.Width, h = deconv.Height;
                 var bgra = new byte[w * h * 4];
                 for (int y = 0; y < h; y++)
