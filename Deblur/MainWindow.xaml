@@ -50,7 +50,7 @@
                             <TextBlock Text="{Binding Angle, StringFormat={}{0:0.0}}" HorizontalAlignment="Right"/>
 
                             <TextBlock Text="Length (px, proxy)" Margin="0,8,0,0"/>
-                            <Slider Minimum="1" Maximum="100" Value="{Binding Length}"/>
+                            <Slider Minimum="0" Maximum="100" Value="{Binding Length}"/>
                             <TextBlock Text="{Binding Length, StringFormat={}{0:0.0}}" HorizontalAlignment="Right"/>
 
                             <TextBlock Text="Smoothness" Margin="0,8,0,0"/>

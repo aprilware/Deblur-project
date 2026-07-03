@@ -17,7 +17,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private BlurType _selectedBlurType = BlurType.Motion;
     [ObservableProperty] private float _angle;
-    [ObservableProperty] private float _length = 10f;
+    [ObservableProperty] private float _length;
     [ObservableProperty] private float _smoothness = 0.005f;
     [ObservableProperty] private string? _currentFilePath;
     [ObservableProperty] private bool _isBusy;
@@ -73,7 +73,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void Reset()
     {
         Angle = 0f;
-        Length = 10f;
+        Length = 0f;
         Smoothness = 0.005f;
         PushCurrentParams();
     }
