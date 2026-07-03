@@ -51,8 +51,13 @@ public sealed class DeblurJobRunner : IDisposable
         return Task.Run(() =>
         {
             progress?.Report(0.1);
-            var scaledParams = p with { Length = p.Length / Math.Max(proxyScale, 1e-6f) };
-            var psf = _kernel.Build(scaledParams);
+            var scaledLength = p.Length / Math.Max(proxyScale, 1e-6f);
+            if (scaledLength < 1f)
+            {
+                progress?.Report(1.0);
+                return fullRes.Clone();
+            }
+            var psf = _kernel.Build(p with { Length = scaledLength });
             progress?.Report(0.3);
             var result = _deconvolver.Apply(fullRes, psf, new DeconvolutionParams(K: p.Smoothness));
             progress?.Report(1.0);
@@ -79,9 +84,18 @@ public sealed class DeblurJobRunner : IDisposable
                     _pending = null;
                 }
 
-                var psf = _kernel.Build(p);
-                var deconv = _deconvolver.Apply(
-                    proxy, psf, new DeconvolutionParams(K: p.Smoothness));
+                ImageBuffer deconv;
+                if (p.Length < 1f)
+                {
+                    // No motion → skip Wiener; show the untouched proxy.
+                    deconv = proxy;
+                }
+                else
+                {
+                    var psf = _kernel.Build(p);
+                    deconv = _deconvolver.Apply(
+                        proxy, psf, new DeconvolutionParams(K: p.Smoothness));
+                }
 
                 // Convert to BGRA.
                 int w = deconv.Width, h = deconv.Height;
