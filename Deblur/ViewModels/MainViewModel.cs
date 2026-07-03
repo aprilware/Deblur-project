@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -18,26 +19,48 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private BlurType _selectedBlurType = BlurType.Motion;
     [ObservableProperty] private float _angle;
     [ObservableProperty] private float _length;
+    [ObservableProperty] private float _radius;
     [ObservableProperty] private float _smoothness = 0.005f;
     [ObservableProperty] private string? _currentFilePath;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string? _statusMessage;
     [ObservableProperty] private WriteableBitmap? _previewBitmap;
 
-    public bool IsMotionSelected => SelectedBlurType == BlurType.Motion;
-    public bool IsComingSoon => !IsMotionSelected;
+    public bool IsMotionSelected     => SelectedBlurType == BlurType.Motion;
+    public bool IsOutOfFocusSelected => SelectedBlurType == BlurType.OutOfFocus;
+    public bool IsGaussianSelected   => SelectedBlurType == BlurType.Gaussian;
 
     public MainViewModel()
     {
         _dispatcher = Application.Current.Dispatcher;
-        _runner = new DeblurJobRunner(new MotionBlurKernel(), new WienerDeconvolver());
+        var kernels = new Dictionary<BlurType, IBlurKernel>
+        {
+            [BlurType.Motion]     = new MotionBlurKernel(),
+            [BlurType.OutOfFocus] = new OutOfFocusBlurKernel(),
+        };
+        _runner = new DeblurJobRunner(kernels, new WienerDeconvolver());
         _runner.ProxyReady += OnProxyReady;
     }
 
     partial void OnSelectedBlurTypeChanged(BlurType value)
     {
         OnPropertyChanged(nameof(IsMotionSelected));
-        OnPropertyChanged(nameof(IsComingSoon));
+        OnPropertyChanged(nameof(IsOutOfFocusSelected));
+        OnPropertyChanged(nameof(IsGaussianSelected));
+
+        // Reset only the incoming type's params so switching shows the raw image.
+        // Smoothness is preserved across type switches (it's a Wiener param, not a blur param).
+        switch (value)
+        {
+            case BlurType.Motion:
+                Angle = 0f;
+                Length = 0f;
+                break;
+            case BlurType.OutOfFocus:
+                Radius = 0f;
+                break;
+        }
+        PushCurrentParams();
     }
 
     public void LoadImageFromBytes(byte[] bytes)
@@ -61,6 +84,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public void UpdateKernel(float angle, float length)
     {
+        // Drag arrow only drives motion blur.
+        if (SelectedBlurType != BlurType.Motion) return;
         Angle = angle;
         Length = length;
         PushCurrentParams();
@@ -69,11 +94,21 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnSmoothnessChanged(float value) { InvalidateFullResCache(); PushCurrentParams(); }
     partial void OnAngleChanged(float value)      { InvalidateFullResCache(); PushCurrentParams(); }
     partial void OnLengthChanged(float value)     { InvalidateFullResCache(); PushCurrentParams(); }
+    partial void OnRadiusChanged(float value)     { InvalidateFullResCache(); PushCurrentParams(); }
 
     public void Reset()
     {
-        Angle = 0f;
-        Length = 0f;
+        // Reset the currently-selected type's params to defaults.
+        switch (SelectedBlurType)
+        {
+            case BlurType.Motion:
+                Angle = 0f;
+                Length = 0f;
+                break;
+            case BlurType.OutOfFocus:
+                Radius = 0f;
+                break;
+        }
         Smoothness = 0.005f;
         PushCurrentParams();
     }
@@ -85,7 +120,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public async Task EnsureFullResRenderedAsync(IProgress<double> progress)
     {
         if (_originalFullRes is null) throw new InvalidOperationException("No image loaded.");
-        var current = new KernelParams(BlurType.Motion, Angle, Length, Smoothness, 0f);
+        var current = BuildCurrentParams();
         if (_fullResBuffer is not null && _fullResParams.Equals(current))
         {
             progress.Report(1.0);
@@ -109,10 +144,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void InvalidateFullResCache() => _fullResBuffer = null;
 
+    private KernelParams BuildCurrentParams()
+        => new KernelParams(SelectedBlurType, Angle, Length, Smoothness, Radius);
+
     private void PushCurrentParams()
     {
         if (_proxy is null) return;
-        _runner.Request(new KernelParams(BlurType.Motion, Angle, Length, Smoothness, 0f));
+        _runner.Request(BuildCurrentParams());
     }
 
     private void OnProxyReady(object? sender, ProxyReadyEventArgs e)
