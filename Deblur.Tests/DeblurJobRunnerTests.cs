@@ -78,6 +78,22 @@ public class DeblurJobRunnerTests
     }
 
     [Fact]
+    public async Task RenderFullAsync_ScalesKernelRadiusByInverseProxyScale()
+    {
+        var kernel = new RecordingStubKernel();
+        var deconv = new SlowStubDeconvolver { SleepMs = 0 };
+        var kernels = new Dictionary<BlurType, IBlurKernel> { [BlurType.OutOfFocus] = kernel };
+        using var runner = new DeblurJobRunner(kernels, deconv);
+
+        var full = SyntheticImages.Checkerboard(200, 200, 10);
+        // proxyScale = 0.25 → radius multiplier = 4x (10 → 40).
+        await runner.RenderFullAsync(full,
+            new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0.005f, Radius: 10f), proxyScale: 0.25f);
+
+        Assert.Contains(kernel.Seen, p => Math.Abs(p.Radius - 40f) < 0.001f);
+    }
+
+    [Fact]
     public void Request_WithOutOfFocusType_DispatchesToOutOfFocusKernel()
     {
         var motionKernel = new RecordingStubKernel();
