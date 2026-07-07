@@ -17,6 +17,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private float _proxyScale = 1f;
 
     [ObservableProperty] private BlurType _selectedBlurType = BlurType.Motion;
+    [ObservableProperty] private AlgorithmType _selectedAlgorithm = AlgorithmType.Wiener;
     [ObservableProperty] private float _angle;
     [ObservableProperty] private float _length;
     [ObservableProperty] private float _radius;
@@ -32,6 +33,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public bool IsOutOfFocusSelected => SelectedBlurType == BlurType.OutOfFocus;
     public bool IsGaussianSelected   => SelectedBlurType == BlurType.Gaussian;
     public bool HasImage => _proxy is not null;
+    public bool IsWienerSelected   => SelectedAlgorithm == AlgorithmType.Wiener;
+    public bool IsTikhonovSelected => SelectedAlgorithm == AlgorithmType.Tikhonov;
 
     public MainViewModel()
     {
@@ -42,7 +45,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             [BlurType.OutOfFocus] = new OutOfFocusBlurKernel(),
             [BlurType.Gaussian]   = new GaussianBlurKernel(),
         };
-        _runner = new DeblurJobRunner(kernels, new WienerDeconvolver());
+        var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener]   = new WienerDeconvolver(),
+            [AlgorithmType.Tikhonov] = new TikhonovDeconvolver(),
+        };
+        _runner = new DeblurJobRunner(kernels, deconvolvers);
         _runner.ProxyReady += OnProxyReady;
         _runner.Idle += OnRunnerIdle;
     }
@@ -75,6 +83,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         // Preserve each type's own params across switches; the user can hit Reset
         // if they want to clear the active type.
+        PushCurrentParams();
+    }
+
+    partial void OnSelectedAlgorithmChanged(AlgorithmType value)
+    {
+        OnPropertyChanged(nameof(IsWienerSelected));
+        OnPropertyChanged(nameof(IsTikhonovSelected));
+        InvalidateFullResCache();
         PushCurrentParams();
     }
 
@@ -165,7 +181,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void InvalidateFullResCache() => _fullResBuffer = null;
 
     private KernelParams BuildCurrentParams()
-        => new KernelParams(SelectedBlurType, Angle, Length, Smoothness, Radius, Sigma, AlgorithmType.Wiener);
+        => new KernelParams(SelectedBlurType, Angle, Length, Smoothness, Radius, Sigma, SelectedAlgorithm);
 
     private void PushCurrentParams()
     {
