@@ -21,6 +21,9 @@ public sealed class DeblurJobRunner : IDisposable
 
     public event EventHandler<ProxyReadyEventArgs>? ProxyReady;
 
+    /// <summary>Fires on the worker thread each time the pending queue drains to empty.</summary>
+    public event EventHandler? Idle;
+
     public bool HasPending
     {
         get { lock (_lock) return _pending.HasValue; }
@@ -139,6 +142,8 @@ public sealed class DeblurJobRunner : IDisposable
                     Bgra = bgra, Width = w, Height = h,
                 });
             }
+
+            if (_running) Idle?.Invoke(this, EventArgs.Empty);
         }
     }
 

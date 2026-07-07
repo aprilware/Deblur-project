@@ -44,7 +44,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         };
         _runner = new DeblurJobRunner(kernels, new WienerDeconvolver());
         _runner.ProxyReady += OnProxyReady;
+        _runner.Idle += OnRunnerIdle;
     }
+
+    private void OnRunnerIdle(object? sender, EventArgs e)
+        => _dispatcher.BeginInvoke(() => IsPreviewComputing = false);
 
     partial void OnSelectedBlurTypeChanged(BlurType value)
     {
@@ -52,21 +56,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsOutOfFocusSelected));
         OnPropertyChanged(nameof(IsGaussianSelected));
 
-        // Reset only the incoming type's params so switching shows the raw image.
-        // Smoothness is preserved across type switches (it's a Wiener param, not a blur param).
-        switch (value)
-        {
-            case BlurType.Motion:
-                Angle = 0f;
-                Length = 0f;
-                break;
-            case BlurType.OutOfFocus:
-                Radius = 0f;
-                break;
-            case BlurType.Gaussian:
-                Sigma = 0f;
-                break;
-        }
+        // Preserve each type's own params across switches; the user can hit Reset
+        // if they want to clear the active type.
         PushCurrentParams();
     }
 
@@ -173,9 +164,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             if (PreviewBitmap is null || PreviewBitmap.PixelWidth != e.Width || PreviewBitmap.PixelHeight != e.Height)
                 PreviewBitmap = ImageBufferInterop.NewCompatibleBitmap(e.Width, e.Height);
             ImageBufferInterop.ApplyBgraToWriteableBitmap(e.Bgra, e.Width, e.Height, PreviewBitmap);
-            // If the worker has more queued, keep the indicator on; otherwise clear it.
-            if (!_runner.HasPending)
-                IsPreviewComputing = false;
         });
     }
 
