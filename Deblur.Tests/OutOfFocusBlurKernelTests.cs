@@ -19,14 +19,14 @@ public class OutOfFocusBlurKernelTests
     {
         var kernel = new OutOfFocusBlurKernel();
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => kernel.Build(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0f, -1f, 0f)));
+            () => kernel.Build(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0f, -1f, 0f, AlgorithmType.Wiener)));
     }
 
     [Fact]
     public void ZeroRadius_ReturnsSinglePixelIdentity()
     {
         var kernel = new OutOfFocusBlurKernel();
-        var k = kernel.Build(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0f, 0f, 0f));
+        var k = kernel.Build(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0f, 0f, 0f, AlgorithmType.Wiener));
         Assert.Equal(1, k.GetLength(0));
         Assert.Equal(1, k.GetLength(1));
         Assert.Equal(1f, k[0, 0], 5);
@@ -36,7 +36,7 @@ public class OutOfFocusBlurKernelTests
     public void Kernel_SumsToOne()
     {
         var kernel = new OutOfFocusBlurKernel();
-        var k = kernel.Build(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0f, 8f, 0f));
+        var k = kernel.Build(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0f, 8f, 0f, AlgorithmType.Wiener));
         Assert.Equal(1f, Sum(k), 4);
     }
 
@@ -44,7 +44,7 @@ public class OutOfFocusBlurKernelTests
     public void Kernel_IsRadiallySymmetric()
     {
         var kernel = new OutOfFocusBlurKernel();
-        var k = kernel.Build(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0f, 6f, 0f));
+        var k = kernel.Build(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0f, 6f, 0f, AlgorithmType.Wiener));
         int size = k.GetLength(0);
         int c = size / 2;
         for (int d = 1; d <= c; d++)
@@ -60,7 +60,7 @@ public class OutOfFocusBlurKernelTests
     public void Kernel_HasAntiAliasedEdge()
     {
         var kernel = new OutOfFocusBlurKernel();
-        var k = kernel.Build(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0f, 5f, 0f));
+        var k = kernel.Build(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0f, 5f, 0f, AlgorithmType.Wiener));
         int size = k.GetLength(0);   // 11
         int c = size / 2;            // 5
         float center = k[c, c];

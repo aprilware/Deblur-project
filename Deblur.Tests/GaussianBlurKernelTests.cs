@@ -19,14 +19,14 @@ public class GaussianBlurKernelTests
     {
         var kernel = new GaussianBlurKernel();
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => kernel.Build(new KernelParams(BlurType.Gaussian, 0f, 0f, 0f, 0f, -1f)));
+            () => kernel.Build(new KernelParams(BlurType.Gaussian, 0f, 0f, 0f, 0f, -1f, AlgorithmType.Wiener)));
     }
 
     [Fact]
     public void ZeroSigma_ReturnsSinglePixelIdentity()
     {
         var kernel = new GaussianBlurKernel();
-        var k = kernel.Build(new KernelParams(BlurType.Gaussian, 0f, 0f, 0f, 0f, 0f));
+        var k = kernel.Build(new KernelParams(BlurType.Gaussian, 0f, 0f, 0f, 0f, 0f, AlgorithmType.Wiener));
         Assert.Equal(1, k.GetLength(0));
         Assert.Equal(1, k.GetLength(1));
         Assert.Equal(1f, k[0, 0], 5);
@@ -36,7 +36,7 @@ public class GaussianBlurKernelTests
     public void Kernel_SumsToOne()
     {
         var kernel = new GaussianBlurKernel();
-        var k = kernel.Build(new KernelParams(BlurType.Gaussian, 0f, 0f, 0f, 0f, 2f));
+        var k = kernel.Build(new KernelParams(BlurType.Gaussian, 0f, 0f, 0f, 0f, 2f, AlgorithmType.Wiener));
         Assert.Equal(1f, Sum(k), 4);
     }
 
@@ -44,7 +44,7 @@ public class GaussianBlurKernelTests
     public void Kernel_IsRadiallySymmetric()
     {
         var kernel = new GaussianBlurKernel();
-        var k = kernel.Build(new KernelParams(BlurType.Gaussian, 0f, 0f, 0f, 0f, 2f));
+        var k = kernel.Build(new KernelParams(BlurType.Gaussian, 0f, 0f, 0f, 0f, 2f, AlgorithmType.Wiener));
         int size = k.GetLength(0);
         int c = size / 2;
         for (int d = 1; d <= c; d++)
@@ -59,7 +59,7 @@ public class GaussianBlurKernelTests
     public void Kernel_PeaksAtCenter_DecaysMonotonically()
     {
         var kernel = new GaussianBlurKernel();
-        var k = kernel.Build(new KernelParams(BlurType.Gaussian, 0f, 0f, 0f, 0f, 2f));
+        var k = kernel.Build(new KernelParams(BlurType.Gaussian, 0f, 0f, 0f, 0f, 2f, AlgorithmType.Wiener));
         int size = k.GetLength(0);
         int c = size / 2;
         float center = k[c, c];

@@ -6,4 +6,5 @@ public readonly record struct KernelParams(
     float Length,
     float Smoothness,
     float Radius,
-    float Sigma);
+    float Sigma,
+    AlgorithmType Algorithm);
