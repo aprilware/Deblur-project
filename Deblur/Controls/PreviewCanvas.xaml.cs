@@ -40,6 +40,7 @@ public partial class PreviewCanvas : UserControl
 
     private Point? _dragStartScreen;
     private double _displayScale = 1.0;
+    private double _zoom = 1.0;
 
     public PreviewCanvas()
     {
@@ -57,6 +58,11 @@ public partial class PreviewCanvas : UserControl
         self._dragStartScreen = null;
         self.ArrowShaft.Visibility = self.ArrowHead.Visibility = Visibility.Collapsed;
         self.ReleaseMouseCapture();
+
+        // Reset the view transform so a fresh image loads fit-to-window at 1x.
+        self._zoom = 1.0;
+        self.Scale.ScaleX = self.Scale.ScaleY = 1.0;
+        self.Translate.X = self.Translate.Y = 0.0;
     }
 
     private void OnMouseDown(object sender, MouseButtonEventArgs e)
