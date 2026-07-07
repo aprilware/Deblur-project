@@ -102,4 +102,25 @@ public class WienerDeconvolverTests
         Assert.True(deconvPsnr > blurredPsnr + 3f,
             $"deconv PSNR {deconvPsnr} not > blurred {blurredPsnr} + 3 dB");
     }
+
+    [Fact]
+    public void Gaussian_RoundTrip_RecoversAbovePsnrThreshold()
+    {
+        // Gaussian PSF has no frequency-domain nulls, so Wiener recovery
+        // is well-conditioned; cell=32 matches the phase-1/2 tests.
+        var original = SyntheticImages.Checkerboard(128, 128, 32);
+        var psf = new GaussianBlurKernel().Build(
+            new KernelParams(BlurType.Gaussian, 0f, 0f, 0f, 0f, 2f));
+        var blurred = SyntheticImages.Convolve(original, psf);
+        var noisy = SyntheticImages.AddGaussianNoise(blurred, 0.005f, seed: 42);
+
+        var deconv = new WienerDeconvolver().Apply(
+            noisy, psf, new DeconvolutionParams(K: 0.005f));
+
+        float blurredPsnr = SyntheticImages.Psnr(original, blurred);
+        float deconvPsnr = SyntheticImages.Psnr(original, deconv);
+        Assert.True(deconvPsnr > 15f, $"deconv PSNR {deconvPsnr} below 15 dB floor");
+        Assert.True(deconvPsnr > blurredPsnr + 3f,
+            $"deconv PSNR {deconvPsnr} not > blurred {blurredPsnr} + 3 dB");
+    }
 }
