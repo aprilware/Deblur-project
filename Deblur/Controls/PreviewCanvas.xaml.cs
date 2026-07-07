@@ -49,6 +49,7 @@ public partial class PreviewCanvas : UserControl
         MouseMove += OnMouseMove;
         MouseLeftButtonUp += OnMouseUp;
         MouseLeave += OnMouseLeave;
+        MouseWheel += OnMouseWheel;
     }
 
     private static void OnSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -102,6 +103,23 @@ public partial class PreviewCanvas : UserControl
         _dragStartScreen = null;
         ArrowShaft.Visibility = ArrowHead.Visibility = Visibility.Collapsed;
         ReleaseMouseCapture();
+    }
+
+    private void OnMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (Source is null) return;
+        var cursor = e.GetPosition(this);
+        double factor = e.Delta > 0 ? 1.2 : 1.0 / 1.2;
+        double newZoom = Math.Clamp(_zoom * factor, 0.1, 10.0);
+        if (Math.Abs(newZoom - _zoom) < 1e-6) return;
+
+        // Zoom toward the cursor: keep the point under the cursor stationary.
+        double ratio = newZoom / _zoom;
+        Translate.X = cursor.X - (cursor.X - Translate.X) * ratio;
+        Translate.Y = cursor.Y - (cursor.Y - Translate.Y) * ratio;
+        Scale.ScaleX = Scale.ScaleY = newZoom;
+        _zoom = newZoom;
+        e.Handled = true;
     }
 
     private void UpdateDisplayScale()
