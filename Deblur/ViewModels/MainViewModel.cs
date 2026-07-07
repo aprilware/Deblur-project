@@ -26,6 +26,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string? _statusMessage;
     [ObservableProperty] private WriteableBitmap? _previewBitmap;
+    [ObservableProperty] private bool _isPreviewComputing;
 
     public bool IsMotionSelected     => SelectedBlurType == BlurType.Motion;
     public bool IsOutOfFocusSelected => SelectedBlurType == BlurType.OutOfFocus;
@@ -161,6 +162,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void PushCurrentParams()
     {
         if (_proxy is null) return;
+        IsPreviewComputing = true;
         _runner.Request(BuildCurrentParams());
     }
 
@@ -171,6 +173,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             if (PreviewBitmap is null || PreviewBitmap.PixelWidth != e.Width || PreviewBitmap.PixelHeight != e.Height)
                 PreviewBitmap = ImageBufferInterop.NewCompatibleBitmap(e.Width, e.Height);
             ImageBufferInterop.ApplyBgraToWriteableBitmap(e.Bgra, e.Width, e.Height, PreviewBitmap);
+            // If the worker has more queued, keep the indicator on; otherwise clear it.
+            if (!_runner.HasPending)
+                IsPreviewComputing = false;
         });
     }
 
