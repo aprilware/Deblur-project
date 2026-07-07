@@ -44,6 +44,10 @@
                     <ComboBox ItemsSource="{Binding Source={StaticResource BlurTypeValues}}"
                               SelectedItem="{Binding SelectedBlurType}"/>
 
+                    <TextBlock Text="Algorithm" FontWeight="Bold" Margin="0,12,0,4"/>
+                    <ComboBox ItemsSource="{Binding Source={StaticResource AlgorithmTypeValues}}"
+                              SelectedItem="{Binding SelectedAlgorithm}"/>
+
                     <Grid Margin="0,12,0,0" Visibility="{Binding IsMotionSelected, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <TextBlock Text="Angle (°)" Margin="0,4,0,0"/>
@@ -73,7 +77,7 @@
                     </Grid>
 
                     <StackPanel Margin="0,12,0,0" Visibility="{Binding HasImage, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="Smoothness" Margin="0,4,0,0"/>
+                        <TextBlock Text="{Binding SelectedAlgorithm, Converter={StaticResource AlgLabel}}" Margin="0,4,0,0"/>
                         <Slider Minimum="0.0001" Maximum="0.1" SmallChange="0.0005" Value="{Binding Smoothness}"/>
                         <TextBlock Text="{Binding Smoothness, StringFormat={}{0:0.0000}}" HorizontalAlignment="Right"/>
 
