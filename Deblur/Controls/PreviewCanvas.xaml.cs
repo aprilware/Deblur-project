@@ -41,6 +41,8 @@ public partial class PreviewCanvas : UserControl
     private Point? _dragStartScreen;
     private double _displayScale = 1.0;
     private double _zoom = 1.0;
+    private Point? _panStartScreen;
+    private Point _panStartTranslate;
 
     public PreviewCanvas()
     {
@@ -50,6 +52,8 @@ public partial class PreviewCanvas : UserControl
         MouseLeftButtonUp += OnMouseUp;
         MouseLeave += OnMouseLeave;
         MouseWheel += OnMouseWheel;
+        MouseDown += OnAnyMouseDown;
+        MouseUp += OnAnyMouseUp;
     }
 
     private static void OnSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -78,10 +82,18 @@ public partial class PreviewCanvas : UserControl
 
     private void OnMouseMove(object sender, MouseEventArgs e)
     {
+        if (_panStartScreen is not null)
+        {
+            var cur = e.GetPosition(this);
+            Translate.X = _panStartTranslate.X + (cur.X - _panStartScreen.Value.X);
+            Translate.Y = _panStartTranslate.Y + (cur.Y - _panStartScreen.Value.Y);
+            return;
+        }
+
         if (_dragStartScreen is null || Source is null) return;
-        var cur = e.GetPosition(this);
-        UpdateArrow(_dragStartScreen.Value, cur);
-        var (angle, length) = ToImageSpace(_dragStartScreen.Value, cur);
+        var arrowCur = e.GetPosition(this);
+        UpdateArrow(_dragStartScreen.Value, arrowCur);
+        var (angle, length) = ToImageSpace(_dragStartScreen.Value, arrowCur);
         Dragging?.Invoke(this, new ArrowDragEventArgs { Angle = angle, Length = length });
     }
 
@@ -122,6 +134,25 @@ public partial class PreviewCanvas : UserControl
         e.Handled = true;
     }
 
+    private void OnAnyMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Middle || Source is null) return;
+        _panStartScreen = e.GetPosition(this);
+        _panStartTranslate = new Point(Translate.X, Translate.Y);
+        Cursor = System.Windows.Input.Cursors.SizeAll;
+        CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void OnAnyMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Middle || _panStartScreen is null) return;
+        _panStartScreen = null;
+        Cursor = System.Windows.Input.Cursors.Arrow;
+        ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
     private void UpdateDisplayScale()
     {
         if (Source is null) { _displayScale = 1.0; return; }
@@ -133,8 +164,9 @@ public partial class PreviewCanvas : UserControl
 
     private (float angle, float length) ToImageSpace(Point start, Point cur)
     {
-        double dx = (cur.X - start.X) / _displayScale;
-        double dy = (cur.Y - start.Y) / _displayScale;
+        double effectiveScale = _displayScale * _zoom;
+        double dx = (cur.X - start.X) / effectiveScale;
+        double dy = (cur.Y - start.Y) / effectiveScale;
         double lenPx = Math.Sqrt(dx * dx + dy * dy);
         double angleDeg = Math.Atan2(dy, dx) * 180.0 / Math.PI;
         if (angleDeg < 0) angleDeg += 360.0;
