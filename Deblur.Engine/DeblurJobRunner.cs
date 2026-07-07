@@ -104,7 +104,14 @@ public sealed class DeblurJobRunner : IDisposable
                 ImageBuffer? proxy;
                 lock (_lock)
                 {
-                    if (_pending is null || _proxy is null) break;
+                    if (_pending is null || _proxy is null)
+                    {
+                        // Fire Idle under the lock so a concurrent Request() can't slip
+                        // in between "queue empty" and the event firing. Idle's contract
+                        // is that subscribers do non-blocking work only.
+                        if (_running) Idle?.Invoke(this, EventArgs.Empty);
+                        break;
+                    }
                     p = _pending.Value;
                     proxy = _proxy;
                     _pending = null;
@@ -142,8 +149,6 @@ public sealed class DeblurJobRunner : IDisposable
                     Bgra = bgra, Width = w, Height = h,
                 });
             }
-
-            if (_running) Idle?.Invoke(this, EventArgs.Empty);
         }
     }
 

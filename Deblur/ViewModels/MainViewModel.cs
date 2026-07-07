@@ -47,8 +47,25 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _runner.Idle += OnRunnerIdle;
     }
 
+    // Short debounce so the bar doesn't wink off in the sliver between a
+    // dispatched Idle callback and a new Request landing on the UI thread.
+    private DispatcherTimer? _idleClearTimer;
+
     private void OnRunnerIdle(object? sender, EventArgs e)
-        => _dispatcher.BeginInvoke(() => IsPreviewComputing = false);
+    {
+        _dispatcher.BeginInvoke(() =>
+        {
+            _idleClearTimer?.Stop();
+            _idleClearTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
+            _idleClearTimer.Tick += (_, _) =>
+            {
+                _idleClearTimer?.Stop();
+                _idleClearTimer = null;
+                IsPreviewComputing = false;
+            };
+            _idleClearTimer.Start();
+        });
+    }
 
     partial void OnSelectedBlurTypeChanged(BlurType value)
     {
@@ -153,6 +170,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void PushCurrentParams()
     {
         if (_proxy is null) return;
+        _idleClearTimer?.Stop();
+        _idleClearTimer = null;
         IsPreviewComputing = true;
         _runner.Request(BuildCurrentParams());
     }
