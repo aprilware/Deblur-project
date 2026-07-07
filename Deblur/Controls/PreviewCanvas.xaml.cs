@@ -25,6 +25,16 @@ public partial class PreviewCanvas : UserControl
         set => SetValue(SourceProperty, value);
     }
 
+    public static readonly DependencyProperty IsArrowEnabledProperty = DependencyProperty.Register(
+        nameof(IsArrowEnabled), typeof(bool), typeof(PreviewCanvas),
+        new PropertyMetadata(true));
+
+    public bool IsArrowEnabled
+    {
+        get => (bool)GetValue(IsArrowEnabledProperty);
+        set => SetValue(IsArrowEnabledProperty, value);
+    }
+
     public event EventHandler<ArrowDragEventArgs>? Dragging;
     public event EventHandler<ArrowDragEventArgs>? DragCommitted;
 
@@ -51,7 +61,7 @@ public partial class PreviewCanvas : UserControl
 
     private void OnMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (Source is null) return;
+        if (Source is null || !IsArrowEnabled) return;
         _dragStartScreen = e.GetPosition(this);
         CaptureMouse();
         UpdateDisplayScale();
