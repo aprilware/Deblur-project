@@ -45,7 +45,7 @@ public class DeblurJobRunnerTests
         };
 
         for (int i = 0; i < 100; i++)
-            runner.Request(new KernelParams(BlurType.Motion, Angle: i, Length: 5f, Smoothness: 0.005f, Radius: 0f));
+            runner.Request(new KernelParams(BlurType.Motion, Angle: i, Length: 5f, Smoothness: 0.005f, Radius: 0f, Sigma: 0f));
 
         // Wait for the last coalesced job to complete.
         var deadline = DateTime.UtcNow.AddSeconds(2);
@@ -72,7 +72,7 @@ public class DeblurJobRunnerTests
         var full = SyntheticImages.Checkerboard(200, 200, 10);
         // proxyScale = proxyW / fullW = 50 / 200 = 0.25 → length multiplier = 4x
         await runner.RenderFullAsync(full,
-            new KernelParams(BlurType.Motion, 45f, 10f, 0.005f, 0f), proxyScale: 0.25f);
+            new KernelParams(BlurType.Motion, 45f, 10f, 0.005f, 0f, 0f), proxyScale: 0.25f);
 
         Assert.Contains(kernel.Seen, p => Math.Abs(p.Length - 40f) < 0.001f);
     }
@@ -88,7 +88,7 @@ public class DeblurJobRunnerTests
         var full = SyntheticImages.Checkerboard(200, 200, 10);
         // proxyScale = 0.25 → radius multiplier = 4x (10 → 40).
         await runner.RenderFullAsync(full,
-            new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0.005f, Radius: 10f), proxyScale: 0.25f);
+            new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0.005f, Radius: 10f, Sigma: 0f), proxyScale: 0.25f);
 
         Assert.Contains(kernel.Seen, p => Math.Abs(p.Radius - 40f) < 0.001f);
     }
@@ -107,7 +107,7 @@ public class DeblurJobRunnerTests
         using var runner = new DeblurJobRunner(kernels, deconv);
         runner.SetProxy(SyntheticImages.Checkerboard(32, 32, 4));
 
-        runner.Request(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0.005f, Radius: 5f));
+        runner.Request(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0.005f, Radius: 5f, Sigma: 0f));
 
         var deadline = DateTime.UtcNow.AddSeconds(2);
         while (DateTime.UtcNow < deadline)
@@ -135,7 +135,7 @@ public class DeblurJobRunnerTests
         int received = 0;
         runner.ProxyReady += (_, __) => Interlocked.Increment(ref received);
 
-        runner.Request(new KernelParams(BlurType.Motion, 0f, Length: 0f, Smoothness: 0.005f, Radius: 0f));
+        runner.Request(new KernelParams(BlurType.Motion, 0f, Length: 0f, Smoothness: 0.005f, Radius: 0f, Sigma: 0f));
 
         var deadline = DateTime.UtcNow.AddSeconds(2);
         while (DateTime.UtcNow < deadline)
@@ -164,7 +164,7 @@ public class DeblurJobRunnerTests
         int received = 0;
         runner.ProxyReady += (_, __) => Interlocked.Increment(ref received);
 
-        runner.Request(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0.005f, Radius: 0f));
+        runner.Request(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0.005f, Radius: 0f, Sigma: 0f));
 
         var deadline = DateTime.UtcNow.AddSeconds(2);
         while (DateTime.UtcNow < deadline)

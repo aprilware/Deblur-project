@@ -145,7 +145,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void InvalidateFullResCache() => _fullResBuffer = null;
 
     private KernelParams BuildCurrentParams()
-        => new KernelParams(SelectedBlurType, Angle, Length, Smoothness, Radius);
+        => new KernelParams(SelectedBlurType, Angle, Length, Smoothness, Radius, 0f);
 
     private void PushCurrentParams()
     {

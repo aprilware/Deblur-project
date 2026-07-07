@@ -5,4 +5,5 @@ public readonly record struct KernelParams(
     float Angle,
     float Length,
     float Smoothness,
-    float Radius);
+    float Radius,
+    float Sigma);
