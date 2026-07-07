@@ -58,6 +58,7 @@ public sealed class DeblurJobRunner : IDisposable
             {
                 Length = p.Length * scaleInv,
                 Radius = p.Radius * scaleInv,
+                Sigma  = p.Sigma  * scaleInv,
             };
             if (IsNoOp(scaledParams))
             {
@@ -72,10 +73,18 @@ public sealed class DeblurJobRunner : IDisposable
         });
     }
 
+    /// <summary>
+    /// Returns true for parameter sets that produce a raw-passthrough (no deconvolution) result.
+    /// Any BlurType this switch treats as a no-op need not be present in the injected kernel
+    /// dictionary; any type that reaches the else branch of WorkerLoop / RenderFullAsync MUST
+    /// have a corresponding entry. Keep this switch in sync with the dictionary the caller
+    /// injects in MainViewModel.
+    /// </summary>
     private static bool IsNoOp(KernelParams p) => p.Type switch
     {
         BlurType.Motion     => p.Length < 1f,
         BlurType.OutOfFocus => p.Radius < 1f,
+        BlurType.Gaussian   => p.Sigma  < 1f,
         _                   => true,
     };
 

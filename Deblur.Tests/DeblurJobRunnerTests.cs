@@ -177,4 +177,79 @@ public class DeblurJobRunnerTests
         Assert.Equal(0, deconv.CallCount);
         Assert.Empty(outOfFocusKernel.Seen);
     }
+
+    [Fact]
+    public void Request_WithGaussianType_DispatchesToGaussianKernel()
+    {
+        var motionKernel = new RecordingStubKernel();
+        var outOfFocusKernel = new RecordingStubKernel();
+        var gaussianKernel = new RecordingStubKernel();
+        var deconv = new SlowStubDeconvolver { SleepMs = 5 };
+        var kernels = new Dictionary<BlurType, IBlurKernel>
+        {
+            [BlurType.Motion]     = motionKernel,
+            [BlurType.OutOfFocus] = outOfFocusKernel,
+            [BlurType.Gaussian]   = gaussianKernel,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconv);
+        runner.SetProxy(SyntheticImages.Checkerboard(32, 32, 4));
+
+        runner.Request(new KernelParams(BlurType.Gaussian, 0f, 0f, 0.005f, 0f, Sigma: 3f));
+
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(20);
+            if (deconv.CallCount > 0 && !runner.HasPending) break;
+        }
+
+        Assert.Contains(gaussianKernel.Seen, p => p.Type == BlurType.Gaussian);
+        Assert.Empty(motionKernel.Seen);
+        Assert.Empty(outOfFocusKernel.Seen);
+    }
+
+    [Fact]
+    public void Request_WithGaussianSigmaBelow1_EmitsRawProxyWithoutCallingDeconvolver()
+    {
+        var gaussianKernel = new RecordingStubKernel();
+        var deconv = new SlowStubDeconvolver { SleepMs = 5 };
+        var kernels = new Dictionary<BlurType, IBlurKernel>
+        {
+            [BlurType.Gaussian] = gaussianKernel,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconv);
+        runner.SetProxy(SyntheticImages.Checkerboard(32, 32, 4));
+
+        int received = 0;
+        runner.ProxyReady += (_, __) => Interlocked.Increment(ref received);
+
+        runner.Request(new KernelParams(BlurType.Gaussian, 0f, 0f, 0.005f, 0f, Sigma: 0f));
+
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(20);
+            if (received > 0 && !runner.HasPending) break;
+        }
+
+        Assert.True(received > 0);
+        Assert.Equal(0, deconv.CallCount);
+        Assert.Empty(gaussianKernel.Seen);
+    }
+
+    [Fact]
+    public async Task RenderFullAsync_ScalesKernelSigmaByInverseProxyScale()
+    {
+        var kernel = new RecordingStubKernel();
+        var deconv = new SlowStubDeconvolver { SleepMs = 0 };
+        var kernels = new Dictionary<BlurType, IBlurKernel> { [BlurType.Gaussian] = kernel };
+        using var runner = new DeblurJobRunner(kernels, deconv);
+
+        var full = SyntheticImages.Checkerboard(200, 200, 10);
+        // proxyScale = 0.25 → sigma multiplier = 4x (3 → 12).
+        await runner.RenderFullAsync(full,
+            new KernelParams(BlurType.Gaussian, 0f, 0f, 0.005f, 0f, Sigma: 3f), proxyScale: 0.25f);
+
+        Assert.Contains(kernel.Seen, p => Math.Abs(p.Sigma - 12f) < 0.001f);
+    }
 }
