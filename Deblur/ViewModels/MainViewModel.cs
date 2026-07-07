@@ -20,6 +20,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private float _angle;
     [ObservableProperty] private float _length;
     [ObservableProperty] private float _radius;
+    [ObservableProperty] private float _sigma;
     [ObservableProperty] private float _smoothness = 0.005f;
     [ObservableProperty] private string? _currentFilePath;
     [ObservableProperty] private bool _isBusy;
@@ -29,6 +30,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public bool IsMotionSelected     => SelectedBlurType == BlurType.Motion;
     public bool IsOutOfFocusSelected => SelectedBlurType == BlurType.OutOfFocus;
     public bool IsGaussianSelected   => SelectedBlurType == BlurType.Gaussian;
+    public bool HasImage => _proxy is not null;
 
     public MainViewModel()
     {
@@ -37,6 +39,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             [BlurType.Motion]     = new MotionBlurKernel(),
             [BlurType.OutOfFocus] = new OutOfFocusBlurKernel(),
+            [BlurType.Gaussian]   = new GaussianBlurKernel(),
         };
         _runner = new DeblurJobRunner(kernels, new WienerDeconvolver());
         _runner.ProxyReady += OnProxyReady;
@@ -59,6 +62,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             case BlurType.OutOfFocus:
                 Radius = 0f;
                 break;
+            case BlurType.Gaussian:
+                Sigma = 0f;
+                break;
         }
         PushCurrentParams();
     }
@@ -79,6 +85,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         PreviewBitmap = ImageBufferInterop.NewCompatibleBitmap(pw, ph);
         _runner.SetProxy(_proxy);
+        OnPropertyChanged(nameof(HasImage));
         Reset();
     }
 
@@ -95,6 +102,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnAngleChanged(float value)      { InvalidateFullResCache(); PushCurrentParams(); }
     partial void OnLengthChanged(float value)     { InvalidateFullResCache(); PushCurrentParams(); }
     partial void OnRadiusChanged(float value)     { InvalidateFullResCache(); PushCurrentParams(); }
+    partial void OnSigmaChanged(float value)      { InvalidateFullResCache(); PushCurrentParams(); }
 
     public void Reset()
     {
@@ -107,6 +115,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 break;
             case BlurType.OutOfFocus:
                 Radius = 0f;
+                break;
+            case BlurType.Gaussian:
+                Sigma = 0f;
                 break;
         }
         Smoothness = 0.005f;
@@ -145,7 +156,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void InvalidateFullResCache() => _fullResBuffer = null;
 
     private KernelParams BuildCurrentParams()
-        => new KernelParams(SelectedBlurType, Angle, Length, Smoothness, Radius, 0f);
+        => new KernelParams(SelectedBlurType, Angle, Length, Smoothness, Radius, Sigma);
 
     private void PushCurrentParams()
     {
