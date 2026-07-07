@@ -131,6 +131,14 @@ public partial class PreviewCanvas : UserControl
         Translate.Y = cursor.Y - (cursor.Y - Translate.Y) * ratio;
         Scale.ScaleX = Scale.ScaleY = newZoom;
         _zoom = newZoom;
+
+        // If a pan is active, re-baseline it against the post-zoom state so the
+        // next MouseMove doesn't snap Translate back to the pre-zoom position.
+        if (_panStartScreen is not null)
+        {
+            _panStartScreen = cursor;
+            _panStartTranslate = new Point(Translate.X, Translate.Y);
+        }
         e.Handled = true;
     }
 
