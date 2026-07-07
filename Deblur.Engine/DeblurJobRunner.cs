@@ -10,7 +10,7 @@ public sealed class ProxyReadyEventArgs : EventArgs
 public sealed class DeblurJobRunner : IDisposable
 {
     private readonly IReadOnlyDictionary<BlurType, IBlurKernel> _kernels;
-    private readonly IDeconvolver _deconvolver;
+    private readonly IReadOnlyDictionary<AlgorithmType, IDeconvolver> _deconvolvers;
     private readonly Thread _worker;
     private readonly ManualResetEventSlim _signal = new(false);
     private readonly object _lock = new();
@@ -31,10 +31,10 @@ public sealed class DeblurJobRunner : IDisposable
 
     public DeblurJobRunner(
         IReadOnlyDictionary<BlurType, IBlurKernel> kernels,
-        IDeconvolver deconvolver)
+        IReadOnlyDictionary<AlgorithmType, IDeconvolver> deconvolvers)
     {
         _kernels = kernels;
-        _deconvolver = deconvolver;
+        _deconvolvers = deconvolvers;
         _worker = new Thread(WorkerLoop) { IsBackground = true, Name = "DeblurWorker" };
         _worker.Start();
     }
@@ -70,7 +70,7 @@ public sealed class DeblurJobRunner : IDisposable
             }
             var psf = _kernels[scaledParams.Type].Build(scaledParams);
             progress?.Report(0.3);
-            var result = _deconvolver.Apply(fullRes, psf, new DeconvolutionParams(K: p.Smoothness));
+            var result = _deconvolvers[scaledParams.Algorithm].Apply(fullRes, psf, new DeconvolutionParams(K: p.Smoothness));
             progress?.Report(1.0);
             return result;
         });
@@ -106,9 +106,6 @@ public sealed class DeblurJobRunner : IDisposable
                 {
                     if (_pending is null || _proxy is null)
                     {
-                        // Fire Idle under the lock so a concurrent Request() can't slip
-                        // in between "queue empty" and the event firing. Idle's contract
-                        // is that subscribers do non-blocking work only.
                         if (_running) Idle?.Invoke(this, EventArgs.Empty);
                         break;
                     }
@@ -125,7 +122,7 @@ public sealed class DeblurJobRunner : IDisposable
                 else
                 {
                     var psf = _kernels[p.Type].Build(p);
-                    deconv = _deconvolver.Apply(
+                    deconv = _deconvolvers[p.Algorithm].Apply(
                         proxy, psf, new DeconvolutionParams(K: p.Smoothness));
                 }
 

@@ -27,13 +27,35 @@ public class DeblurJobRunnerTests
         public float[,] Build(KernelParams p) { Seen.Add(p); return new float[1, 1] { { 1f } }; }
     }
 
+    private sealed class RecordingStubDeconvolver : IDeconvolver
+    {
+        public readonly System.Collections.Concurrent.ConcurrentBag<KernelParams> Applied = new();
+        public int SleepMs { get; init; } = 0;
+
+        public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p)
+        {
+            // We only need the algorithm for routing; the caller's KernelParams isn't
+            // reachable here, so we record something distinguishable via the PSF hash.
+            // In practice, the routing test uses a stub kernel that echoes p.Type into
+            // the psf, but simplest is to just record we were called.
+            Applied.Add(new KernelParams(BlurType.Motion, 0f, 0f, p.K, 0f, 0f, AlgorithmType.Wiener));
+            if (SleepMs > 0) Thread.Sleep(SleepMs);
+            return input.Clone();
+        }
+    }
+
     [Fact]
     public void Rapid_Requests_Coalesce_And_LastParamsWin()
     {
         var kernel = new RecordingStubKernel();
         var deconv = new SlowStubDeconvolver { SleepMs = 15 };
         var kernels = new Dictionary<BlurType, IBlurKernel> { [BlurType.Motion] = kernel };
-        using var runner = new DeblurJobRunner(kernels, deconv);
+        var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener]   = deconv,
+            [AlgorithmType.Tikhonov] = deconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvolvers);
         runner.SetProxy(SyntheticImages.Checkerboard(32, 32, 4));
 
         int received = 0;
@@ -67,7 +89,12 @@ public class DeblurJobRunnerTests
         var kernel = new RecordingStubKernel();
         var deconv = new SlowStubDeconvolver { SleepMs = 0 };
         var kernels = new Dictionary<BlurType, IBlurKernel> { [BlurType.Motion] = kernel };
-        using var runner = new DeblurJobRunner(kernels, deconv);
+        var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener]   = deconv,
+            [AlgorithmType.Tikhonov] = deconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvolvers);
 
         var full = SyntheticImages.Checkerboard(200, 200, 10);
         // proxyScale = proxyW / fullW = 50 / 200 = 0.25 → length multiplier = 4x
@@ -83,7 +110,12 @@ public class DeblurJobRunnerTests
         var kernel = new RecordingStubKernel();
         var deconv = new SlowStubDeconvolver { SleepMs = 0 };
         var kernels = new Dictionary<BlurType, IBlurKernel> { [BlurType.OutOfFocus] = kernel };
-        using var runner = new DeblurJobRunner(kernels, deconv);
+        var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener]   = deconv,
+            [AlgorithmType.Tikhonov] = deconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvolvers);
 
         var full = SyntheticImages.Checkerboard(200, 200, 10);
         // proxyScale = 0.25 → radius multiplier = 4x (10 → 40).
@@ -104,7 +136,12 @@ public class DeblurJobRunnerTests
             [BlurType.Motion]     = motionKernel,
             [BlurType.OutOfFocus] = outOfFocusKernel,
         };
-        using var runner = new DeblurJobRunner(kernels, deconv);
+        var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener]   = deconv,
+            [AlgorithmType.Tikhonov] = deconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvolvers);
         runner.SetProxy(SyntheticImages.Checkerboard(32, 32, 4));
 
         runner.Request(new KernelParams(BlurType.OutOfFocus, 0f, 0f, 0.005f, Radius: 5f, Sigma: 0f, Algorithm: AlgorithmType.Wiener));
@@ -129,7 +166,12 @@ public class DeblurJobRunnerTests
         {
             [BlurType.Motion] = motionKernel,
         };
-        using var runner = new DeblurJobRunner(kernels, deconv);
+        var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener]   = deconv,
+            [AlgorithmType.Tikhonov] = deconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvolvers);
         runner.SetProxy(SyntheticImages.Checkerboard(32, 32, 4));
 
         int received = 0;
@@ -158,7 +200,12 @@ public class DeblurJobRunnerTests
         {
             [BlurType.OutOfFocus] = outOfFocusKernel,
         };
-        using var runner = new DeblurJobRunner(kernels, deconv);
+        var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener]   = deconv,
+            [AlgorithmType.Tikhonov] = deconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvolvers);
         runner.SetProxy(SyntheticImages.Checkerboard(32, 32, 4));
 
         int received = 0;
@@ -191,7 +238,12 @@ public class DeblurJobRunnerTests
             [BlurType.OutOfFocus] = outOfFocusKernel,
             [BlurType.Gaussian]   = gaussianKernel,
         };
-        using var runner = new DeblurJobRunner(kernels, deconv);
+        var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener]   = deconv,
+            [AlgorithmType.Tikhonov] = deconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvolvers);
         runner.SetProxy(SyntheticImages.Checkerboard(32, 32, 4));
 
         runner.Request(new KernelParams(BlurType.Gaussian, 0f, 0f, 0.005f, 0f, Sigma: 3f, Algorithm: AlgorithmType.Wiener));
@@ -217,7 +269,12 @@ public class DeblurJobRunnerTests
         {
             [BlurType.Gaussian] = gaussianKernel,
         };
-        using var runner = new DeblurJobRunner(kernels, deconv);
+        var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener]   = deconv,
+            [AlgorithmType.Tikhonov] = deconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvolvers);
         runner.SetProxy(SyntheticImages.Checkerboard(32, 32, 4));
 
         int received = 0;
@@ -243,7 +300,12 @@ public class DeblurJobRunnerTests
         var kernel = new RecordingStubKernel();
         var deconv = new SlowStubDeconvolver { SleepMs = 0 };
         var kernels = new Dictionary<BlurType, IBlurKernel> { [BlurType.Gaussian] = kernel };
-        using var runner = new DeblurJobRunner(kernels, deconv);
+        var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener]   = deconv,
+            [AlgorithmType.Tikhonov] = deconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvolvers);
 
         var full = SyntheticImages.Checkerboard(200, 200, 10);
         // proxyScale = 0.25 → sigma multiplier = 4x (3 → 12).
@@ -251,5 +313,33 @@ public class DeblurJobRunnerTests
             new KernelParams(BlurType.Gaussian, 0f, 0f, 0.005f, 0f, Sigma: 3f, Algorithm: AlgorithmType.Wiener), proxyScale: 0.25f);
 
         Assert.Contains(kernel.Seen, p => Math.Abs(p.Sigma - 12f) < 0.001f);
+    }
+
+    [Fact]
+    public void Request_WithTikhonovAlgorithm_DispatchesToTikhonovDeconvolver()
+    {
+        var kernel = new RecordingStubKernel();
+        var wienerDeconv = new RecordingStubDeconvolver();
+        var tikhonovDeconv = new RecordingStubDeconvolver();
+        var kernels = new Dictionary<BlurType, IBlurKernel> { [BlurType.Motion] = kernel };
+        var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener]   = wienerDeconv,
+            [AlgorithmType.Tikhonov] = tikhonovDeconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvolvers);
+        runner.SetProxy(SyntheticImages.Checkerboard(32, 32, 4));
+
+        runner.Request(new KernelParams(BlurType.Motion, 0f, Length: 5f, Smoothness: 0.005f, Radius: 0f, Sigma: 0f, Algorithm: AlgorithmType.Tikhonov));
+
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(20);
+            if (tikhonovDeconv.Applied.Count > 0 && !runner.HasPending) break;
+        }
+
+        Assert.NotEmpty(tikhonovDeconv.Applied);
+        Assert.Empty(wienerDeconv.Applied);
     }
 }
