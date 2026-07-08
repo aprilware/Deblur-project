@@ -5,6 +5,7 @@
         xmlns:vm="clr-namespace:Deblur.ViewModels"
         xmlns:engine="clr-namespace:Deblur.Engine;assembly=Deblur.Engine"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:local="clr-namespace:Deblur"
         Title="Deblur" Height="720" Width="1200"
         AllowDrop="True">
     <Window.DataContext><vm:MainViewModel/></Window.DataContext>
@@ -16,14 +17,44 @@
         </ObjectDataProvider>
     </Window.Resources>
 
+    <Window.InputBindings>
+        <!-- ApplicationCommands.Open ships with Ctrl+O built in; SaveAs has no default gesture, wire it here. -->
+        <KeyBinding Key="S"          Modifiers="Ctrl" Command="ApplicationCommands.SaveAs"/>
+
+        <KeyBinding Key="R"          Modifiers="Ctrl" Command="{x:Static local:AppCommands.Reset}"/>
+        <KeyBinding Key="D0"         Modifiers="Ctrl" Command="{x:Static local:AppCommands.FitToWindow}"/>
+        <KeyBinding Key="D1"         Modifiers="Ctrl" Command="{x:Static local:AppCommands.PixelPerfect}"/>
+        <KeyBinding Key="OemPlus"    Modifiers="Ctrl" Command="{x:Static local:AppCommands.ZoomIn}"/>
+        <KeyBinding Key="OemMinus"   Modifiers="Ctrl" Command="{x:Static local:AppCommands.ZoomOut}"/>
+        <KeyBinding Key="F5"                          Command="{x:Static local:AppCommands.RenderFull}"/>
+        <KeyBinding Key="F1"                          Command="{x:Static local:AppCommands.ShowShortcuts}"/>
+        <KeyBinding Key="Escape"                      Command="{x:Static local:AppCommands.CancelInteraction}"/>
+    </Window.InputBindings>
+
+    <Window.CommandBindings>
+        <CommandBinding Command="ApplicationCommands.Open"                       Executed="OnOpenExecuted"/>
+        <CommandBinding Command="ApplicationCommands.SaveAs"                     Executed="OnSaveAsExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.Reset}"             Executed="OnResetExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.FitToWindow}"       Executed="OnFitExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.PixelPerfect}"      Executed="OnPixelPerfectExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.ZoomIn}"            Executed="OnZoomInExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.ZoomOut}"           Executed="OnZoomOutExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.RenderFull}"        Executed="OnRenderFullExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.ShowShortcuts}"     Executed="OnShowShortcutsExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.CancelInteraction}" Executed="OnCancelInteractionExecuted"/>
+    </Window.CommandBindings>
+
     <Grid>
         <DockPanel>
             <Menu DockPanel.Dock="Top">
                 <MenuItem Header="_File">
-                    <MenuItem Header="_Open..." Click="OnOpenClick"/>
-                    <MenuItem Header="_Save As..." Click="OnSaveAsClick"/>
+                    <MenuItem Header="_Open..." Command="ApplicationCommands.Open"/>
+                    <MenuItem Header="_Save As..." Command="ApplicationCommands.SaveAs" InputGestureText="Ctrl+S"/>
                     <Separator/>
                     <MenuItem Header="E_xit" Click="OnExitClick"/>
+                </MenuItem>
+                <MenuItem Header="_Help">
+                    <MenuItem Header="_Keyboard Shortcuts..." Command="{x:Static local:AppCommands.ShowShortcuts}"/>
                 </MenuItem>
             </Menu>
 
@@ -81,8 +112,8 @@
                         <Slider Minimum="0.0001" Maximum="0.1" SmallChange="0.0005" Value="{Binding Smoothness}"/>
                         <TextBlock Text="{Binding Smoothness, StringFormat={}{0:0.0000}}" HorizontalAlignment="Right"/>
 
-                        <Button Content="Reset" Margin="0,12,0,0" Click="OnResetClick"/>
-                        <Button Content="Render full resolution" Margin="0,8,0,0" Click="OnRenderFullClick"/>
+                        <Button Content="Reset" Margin="0,12,0,0" Command="{x:Static local:AppCommands.Reset}"/>
+                        <Button Content="Render full resolution" Margin="0,8,0,0" Command="{x:Static local:AppCommands.RenderFull}"/>
                     </StackPanel>
 
                     <ProgressBar Margin="0,12,0,0" Height="4" IsIndeterminate="True"

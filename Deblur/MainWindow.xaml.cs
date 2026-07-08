@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Input;
 using Microsoft.Win32;
 using Deblur.Controls;
 using Deblur.ViewModels;
@@ -18,7 +19,7 @@ public partial class MainWindow : Window
         Closed += (_, __) => (DataContext as IDisposable)?.Dispose();
     }
 
-    private void OnOpenClick(object sender, RoutedEventArgs e)
+    private void OnOpenExecuted(object sender, ExecutedRoutedEventArgs e)
     {
         if (Vm.IsBusy) return;
         var dlg = new OpenFileDialog
@@ -31,7 +32,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnRenderFullClick(object sender, RoutedEventArgs e)
+    private async void OnRenderFullExecuted(object sender, ExecutedRoutedEventArgs e)
     {
         if (Vm.CurrentFilePath is null)
         {
@@ -43,8 +44,6 @@ public partial class MainWindow : Window
         try
         {
             var progress = new Progress<double>(v => Busy.SetProgress(v));
-            // Populate _fullResBuffer without touching _originalFullRes or the current preview.
-            // The proxy-deblurred preview already shows the same params visually; Save will use the cache.
             await Vm.EnsureFullResRenderedAsync(progress);
             Vm.StatusMessage = "Full-resolution render ready. Use File → Save As… to write it.";
         }
@@ -55,7 +54,7 @@ public partial class MainWindow : Window
         finally { Busy.Hide(); Vm.IsBusy = false; }
     }
 
-    private async void OnSaveAsClick(object sender, RoutedEventArgs e)
+    private async void OnSaveAsExecuted(object sender, ExecutedRoutedEventArgs e)
     {
         if (Vm.CurrentFilePath is null)
         {
@@ -90,7 +89,15 @@ public partial class MainWindow : Window
         finally { Busy.Hide(); Vm.IsBusy = false; }
     }
     private void OnExitClick(object sender, RoutedEventArgs e) => Close();
-    private void OnResetClick(object sender, RoutedEventArgs e) => Vm.Reset();
+    private void OnResetExecuted(object sender, ExecutedRoutedEventArgs e) => Vm.Reset();
+
+    private void OnFitExecuted(object sender, ExecutedRoutedEventArgs e) => Preview.FitToWindow();
+    private void OnPixelPerfectExecuted(object sender, ExecutedRoutedEventArgs e) => Preview.PixelPerfect();
+    private void OnZoomInExecuted(object sender, ExecutedRoutedEventArgs e) => Preview.Zoom(1.2);
+    private void OnZoomOutExecuted(object sender, ExecutedRoutedEventArgs e) => Preview.Zoom(1.0 / 1.2);
+    private void OnShowShortcutsExecuted(object sender, ExecutedRoutedEventArgs e)
+        => new ShortcutsWindow { Owner = this }.ShowDialog();
+    private void OnCancelInteractionExecuted(object sender, ExecutedRoutedEventArgs e) => Preview.CancelInteraction();
 
     private void OnPreviewDragging(object? sender, ArrowDragEventArgs e)
         => Vm.UpdateKernel(e.Angle, e.Length);
