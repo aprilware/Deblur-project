@@ -161,6 +161,48 @@ public partial class PreviewCanvas : UserControl
         e.Handled = true;
     }
 
+    public void FitToWindow()
+    {
+        _zoom = 1.0;
+        Scale.ScaleX = Scale.ScaleY = 1.0;
+        Translate.X = Translate.Y = 0.0;
+    }
+
+    public void PixelPerfect()
+    {
+        if (Source is null) return;
+        UpdateDisplayScale();
+        if (_displayScale <= 0) return;
+        double target = 1.0 / _displayScale;
+        _zoom = Math.Clamp(target, 0.1, 10.0);
+        Scale.ScaleX = Scale.ScaleY = _zoom;
+        Translate.X = Translate.Y = 0.0;
+    }
+
+    public void Zoom(double factor)
+    {
+        if (Source is null) return;
+        double newZoom = Math.Clamp(_zoom * factor, 0.1, 10.0);
+        if (Math.Abs(newZoom - _zoom) < 1e-6) return;
+
+        // Keyboard zoom has no cursor position — anchor at the pane center.
+        var center = new Point(ActualWidth / 2, ActualHeight / 2);
+        double ratio = newZoom / _zoom;
+        Translate.X = center.X - (center.X - Translate.X) * ratio;
+        Translate.Y = center.Y - (center.Y - Translate.Y) * ratio;
+        Scale.ScaleX = Scale.ScaleY = newZoom;
+        _zoom = newZoom;
+    }
+
+    public void CancelInteraction()
+    {
+        _dragStartScreen = null;
+        _panStartScreen = null;
+        ArrowShaft.Visibility = ArrowHead.Visibility = Visibility.Collapsed;
+        Cursor = System.Windows.Input.Cursors.Arrow;
+        ReleaseMouseCapture();
+    }
+
     private void UpdateDisplayScale()
     {
         if (Source is null) { _displayScale = 1.0; return; }
