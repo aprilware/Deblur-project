@@ -1,0 +1,68 @@
+<Window x:Class="Deblur.ShortcutsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Keyboard Shortcuts"
+        Width="420" Height="360"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        WindowStyle="ToolWindow">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Ctrl+O" FontFamily="Consolas" Margin="0,4,16,4"/>
+            <TextBlock Grid.Row="0" Grid.Column="1" Text="Open image" Margin="0,4,0,4"/>
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Ctrl+S" FontFamily="Consolas" Margin="0,4,16,4"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="Save As" Margin="0,4,0,4"/>
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="F5" FontFamily="Consolas" Margin="0,4,16,4"/>
+            <TextBlock Grid.Row="2" Grid.Column="1" Text="Render full resolution" Margin="0,4,0,4"/>
+
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="Ctrl+R" FontFamily="Consolas" Margin="0,4,16,4"/>
+            <TextBlock Grid.Row="3" Grid.Column="1" Text="Reset current blur type" Margin="0,4,0,4"/>
+
+            <TextBlock Grid.Row="4" Grid.Column="0" Text="Ctrl+0" FontFamily="Consolas" Margin="0,4,16,4"/>
+            <TextBlock Grid.Row="4" Grid.Column="1" Text="Fit to window" Margin="0,4,0,4"/>
+
+            <TextBlock Grid.Row="5" Grid.Column="0" Text="Ctrl+1" FontFamily="Consolas" Margin="0,4,16,4"/>
+            <TextBlock Grid.Row="5" Grid.Column="1" Text="1:1 pixel" Margin="0,4,0,4"/>
+
+            <TextBlock Grid.Row="6" Grid.Column="0" Text="Ctrl++" FontFamily="Consolas" Margin="0,4,16,4"/>
+            <TextBlock Grid.Row="6" Grid.Column="1" Text="Zoom in" Margin="0,4,0,4"/>
+
+            <TextBlock Grid.Row="7" Grid.Column="0" Text="Ctrl+-" FontFamily="Consolas" Margin="0,4,16,4"/>
+            <TextBlock Grid.Row="7" Grid.Column="1" Text="Zoom out" Margin="0,4,0,4"/>
+
+            <TextBlock Grid.Row="8" Grid.Column="0" Text="Esc" FontFamily="Consolas" Margin="0,4,16,4"/>
+            <TextBlock Grid.Row="8" Grid.Column="1" Text="Cancel drag or pan" Margin="0,4,0,4"/>
+
+            <TextBlock Grid.Row="9" Grid.Column="0" Text="F1" FontFamily="Consolas" Margin="0,4,16,4"/>
+            <TextBlock Grid.Row="9" Grid.Column="1" Text="Show this window" Margin="0,4,0,4"/>
+        </Grid>
+
+        <Button Grid.Row="1" Content="Close" IsCancel="True" IsDefault="True"
+                HorizontalAlignment="Right" Padding="16,4" Margin="0,12,0,0"/>
+    </Grid>
+</Window>
