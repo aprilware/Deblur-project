@@ -4,6 +4,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Deblur.Engine;
+using Deblur.Engine.Imaging;
 using Deblur.Services;
 
 namespace Deblur.ViewModels;
@@ -17,6 +18,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private float _proxyScale = 1f;
     private readonly ParamHistory _history = new();
     private bool _suppressHistory;
+    private readonly IImageCodec _codec = new WicImageCodec();
+    private readonly Gdi8BitImageCodec _fallbackCodec = new();
 
     [ObservableProperty] private BlurType _selectedBlurType = BlurType.Motion;
     [ObservableProperty] private AlgorithmType _selectedAlgorithm = AlgorithmType.Wiener;
@@ -55,7 +58,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             [AlgorithmType.Tikhonov]       = new TikhonovDeconvolver(),
             [AlgorithmType.TotalVariation] = new TotalVariationDeconvolver(),
         };
-        _runner = new DeblurJobRunner(kernels, deconvolvers);
+        _runner = new DeblurJobRunner(kernels, deconvolvers, PipelineOptions.Default);
         _runner.ProxyReady += OnProxyReady;
         _runner.Idle += OnRunnerIdle;
     }
@@ -103,7 +106,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public void LoadImageFromBytes(byte[] bytes)
     {
-        var full = ImageCodec.DecodeFromBytes(bytes);
+        ImageBuffer full;
+        BitDepth depth;
+        try
+        {
+            (full, depth) = _codec.Decode(bytes);
+        }
+        catch (Exception)
+        {
+            (full, depth) = _fallbackCodec.Decode(bytes);
+        }
+        full.SourceBitDepth = depth;
         _originalFullRes = full;
         // Keep proxy dims under ~920 px so FFT pads to 1024 (not 2048) — 4x faster interactive preview.
         const int maxProxyPixels = 400_000;
@@ -112,7 +125,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (px > maxProxyPixels) scale = Math.Sqrt((double)maxProxyPixels / px);
         int pw = Math.Max(1, (int)Math.Round(full.Width * scale));
         int ph = Math.Max(1, (int)Math.Round(full.Height * scale));
-        _proxy = Downscale(full, pw, ph);
+        _proxy = AreaResample.Box(full, pw, ph);
         _proxyScale = (float)pw / full.Width;
 
         PreviewBitmap = ImageBufferInterop.NewCompatibleBitmap(pw, ph);
@@ -189,13 +202,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public async Task<byte[]> RenderFullAsPngAsync(IProgress<double> progress, CancellationToken cancellationToken = default)
     {
         await EnsureFullResRenderedAsync(progress, cancellationToken);
-        return ImageCodec.EncodePng(_fullResBuffer!);
+        return _codec.EncodePng(_fullResBuffer!, _fullResBuffer!.SourceBitDepth);
     }
 
     public async Task<byte[]> RenderFullAsJpegAsync(int quality, IProgress<double> progress, CancellationToken cancellationToken = default)
     {
         await EnsureFullResRenderedAsync(progress, cancellationToken);
-        return ImageCodec.EncodeJpeg(_fullResBuffer!, quality);
+        return _codec.EncodeJpeg(_fullResBuffer!, quality);
     }
 
     private void InvalidateFullResCache() => _fullResBuffer = null;
@@ -220,27 +233,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 PreviewBitmap = ImageBufferInterop.NewCompatibleBitmap(e.Width, e.Height);
             ImageBufferInterop.ApplyBgraToWriteableBitmap(e.Bgra, e.Width, e.Height, PreviewBitmap);
         });
-    }
-
-    private static ImageBuffer Downscale(ImageBuffer src, int newW, int newH)
-    {
-        var dst = new ImageBuffer(newW, newH);
-        double sx = (double)src.Width / newW;
-        double sy = (double)src.Height / newH;
-        for (int y = 0; y < newH; y++)
-        {
-            int srcY = Math.Min(src.Height - 1, (int)(y * sy));
-            for (int x = 0; x < newW; x++)
-            {
-                int srcX = Math.Min(src.Width - 1, (int)(x * sx));
-                int si = srcY * src.Width + srcX;
-                int di = y * newW + x;
-                dst.R[di] = src.R[si];
-                dst.G[di] = src.G[si];
-                dst.B[di] = src.B[si];
-            }
-        }
-        return dst;
     }
 
     public void Undo()

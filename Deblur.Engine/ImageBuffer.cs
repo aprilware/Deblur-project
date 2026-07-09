@@ -10,6 +10,8 @@ public sealed class ImageBuffer
 
     public int PixelCount => Width * Height;
 
+    public BitDepth SourceBitDepth { get; set; } = BitDepth.Eight;
+
     public ImageBuffer(int width, int height)
     {
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
@@ -41,6 +43,7 @@ public sealed class ImageBuffer
             Width, Height,
             (float[])R.Clone(),
             (float[])G.Clone(),
-            (float[])B.Clone());
+            (float[])B.Clone())
+        { SourceBitDepth = this.SourceBitDepth };
     }
 }

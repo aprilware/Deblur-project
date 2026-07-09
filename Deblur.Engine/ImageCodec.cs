@@ -113,3 +113,18 @@ public static class ImageCodec
         throw new InvalidOperationException($"No encoder for {format}.");
     }
 }
+
+[SupportedOSPlatform("windows")]
+public sealed class Gdi8BitImageCodec : IImageCodec
+{
+    public (ImageBuffer image, BitDepth depth) Decode(byte[] bytes)
+    {
+        var img = ImageCodec.DecodeFromBytes(bytes);
+        img.SourceBitDepth = BitDepth.Eight;
+        return (img, BitDepth.Eight);
+    }
+
+    public byte[] EncodePng(ImageBuffer image, BitDepth depth) => ImageCodec.EncodePng(image);
+
+    public byte[] EncodeJpeg(ImageBuffer image, int quality) => ImageCodec.EncodeJpeg(image, quality);
+}

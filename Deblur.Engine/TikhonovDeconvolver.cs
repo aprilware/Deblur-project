@@ -4,8 +4,9 @@ namespace Deblur.Engine;
 
 public sealed class TikhonovDeconvolver : IDeconvolver
 {
-    public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p)
+    public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p, PipelineOptions? options = null)
     {
+        var opt = options ?? PipelineOptions.Default;
         int psfH = psf.GetLength(0);
         int psfW = psf.GetLength(1);
         int pad = Math.Max(psfW, psfH) / 2 + 1;
@@ -42,25 +43,17 @@ public sealed class TikhonovDeconvolver : IDeconvolver
             }
         }
 
-        float[] outR = ProcessChannel(input.R, input.Width, input.Height, pad, fftSize, tikhonovNumer);
-        float[] outG = ProcessChannel(input.G, input.Width, input.Height, pad, fftSize, tikhonovNumer);
-        float[] outB = ProcessChannel(input.B, input.Width, input.Height, pad, fftSize, tikhonovNumer);
+        float[] outR = ProcessChannel(input.R, input.Width, input.Height, pad, fftSize, tikhonovNumer, opt);
+        float[] outG = ProcessChannel(input.G, input.Width, input.Height, pad, fftSize, tikhonovNumer, opt);
+        float[] outB = ProcessChannel(input.B, input.Width, input.Height, pad, fftSize, tikhonovNumer, opt);
         return new ImageBuffer(input.Width, input.Height, outR, outG, outB);
     }
 
     private static float[] ProcessChannel(
-        float[] channel, int w, int h, int pad, int fftSize, Complex[,] tikhonovNumer)
+        float[] channel, int w, int h, int pad, int fftSize, Complex[,] tikhonovNumer, PipelineOptions opt)
     {
-        var padded = new float[fftSize, fftSize];
-        for (int y = 0; y < fftSize; y++)
-        {
-            int sy = ReflectIndex(y - pad, h);
-            for (int x = 0; x < fftSize; x++)
-            {
-                int sx = ReflectIndex(x - pad, w);
-                padded[y, x] = channel[sy * w + sx];
-            }
-        }
+        var padded = BoundaryFill.Pad(channel, w, h, pad, fftSize, opt.BoundaryMode);
+        if (opt.EdgeTaper) EdgeTaper.ApplyInPlace(padded, pad);
 
         var G = FftAdapter.Forward2D(padded);
         var Fhat = new Complex[fftSize, fftSize];
@@ -81,13 +74,5 @@ public sealed class TikhonovDeconvolver : IDeconvolver
             }
         }
         return result;
-    }
-
-    private static int ReflectIndex(int i, int len)
-    {
-        if (len <= 1) return 0;
-        int period = 2 * (len - 1);
-        int m = ((i % period) + period) % period;
-        return m < len ? m : period - m;
     }
 }

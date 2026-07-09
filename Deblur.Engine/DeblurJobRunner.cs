@@ -11,6 +11,7 @@ public sealed class DeblurJobRunner : IDisposable
 {
     private readonly IReadOnlyDictionary<BlurType, IBlurKernel> _kernels;
     private readonly IReadOnlyDictionary<AlgorithmType, IDeconvolver> _deconvolvers;
+    private readonly PipelineOptions _options;
     private readonly Thread _worker;
     private readonly ManualResetEventSlim _signal = new(false);
     private readonly object _lock = new();
@@ -32,9 +33,18 @@ public sealed class DeblurJobRunner : IDisposable
     public DeblurJobRunner(
         IReadOnlyDictionary<BlurType, IBlurKernel> kernels,
         IReadOnlyDictionary<AlgorithmType, IDeconvolver> deconvolvers)
+        : this(kernels, deconvolvers, PipelineOptions.Default)
+    {
+    }
+
+    public DeblurJobRunner(
+        IReadOnlyDictionary<BlurType, IBlurKernel> kernels,
+        IReadOnlyDictionary<AlgorithmType, IDeconvolver> deconvolvers,
+        PipelineOptions options)
     {
         _kernels = kernels;
         _deconvolvers = deconvolvers;
+        _options = options;
         _worker = new Thread(WorkerLoop) { IsBackground = true, Name = "DeblurWorker" };
         _worker.Start();
     }
@@ -72,10 +82,9 @@ public sealed class DeblurJobRunner : IDisposable
                 return fullRes.Clone();
             }
             cancellationToken.ThrowIfCancellationRequested();
-            var psf = _kernels[scaledParams.Type].Build(scaledParams);
             progress?.Report(0.3);
             cancellationToken.ThrowIfCancellationRequested();
-            var result = _deconvolvers[scaledParams.Algorithm].Apply(fullRes, psf, new DeconvolutionParams(K: p.Smoothness));
+            var result = RunDeconvolve(fullRes, scaledParams);
             progress?.Report(1.0);
             return result;
         });
@@ -95,6 +104,57 @@ public sealed class DeblurJobRunner : IDisposable
         BlurType.Gaussian   => p.Sigma  < 1f,
         _                   => true,
     };
+
+    /// <summary>
+    /// Runs the configured deconvolver against <paramref name="input"/> for kernel parameters
+    /// <paramref name="p"/>, applying linear-light decode/encode and luminance-only routing per
+    /// <see cref="_options"/>. Order: sRGB -> linear -> YCbCr -> deconvolve Y -> recompose to
+    /// linear RGB -> sRGB.
+    /// </summary>
+    private ImageBuffer RunDeconvolve(ImageBuffer input, KernelParams p)
+    {
+        var psf = _kernels[p.Type].Build(p);
+        var deconvIn = input;
+
+        if (_options.LinearLight)
+        {
+            deconvIn = input.Clone();
+            Deblur.Engine.Color.SrgbLinear.ToLinearInPlace(deconvIn.R);
+            Deblur.Engine.Color.SrgbLinear.ToLinearInPlace(deconvIn.G);
+            Deblur.Engine.Color.SrgbLinear.ToLinearInPlace(deconvIn.B);
+        }
+
+        ImageBuffer result;
+        if (_options.LuminanceOnly)
+        {
+            var (y, cb, cr) = Deblur.Engine.Color.YCbCr.FromRgb(deconvIn.R, deconvIn.G, deconvIn.B);
+            var yBuf = new ImageBuffer(deconvIn.Width, deconvIn.Height, y, (float[])y.Clone(), (float[])y.Clone());
+            var deconvY = _deconvolvers[p.Algorithm].Apply(yBuf, psf, new DeconvolutionParams(K: p.Smoothness), _options);
+            var (r, g, b) = Deblur.Engine.Color.YCbCr.ToRgb(deconvY.R, cb, cr);
+            result = new ImageBuffer(deconvIn.Width, deconvIn.Height, r, g, b);
+        }
+        else
+        {
+            result = _deconvolvers[p.Algorithm].Apply(deconvIn, psf, new DeconvolutionParams(K: p.Smoothness), _options);
+        }
+
+        if (_options.LinearLight)
+        {
+            // Encode result back to sRGB; result may share arrays with deconvIn — clone to be safe.
+            var enc = new ImageBuffer(result.Width, result.Height,
+                (float[])result.R.Clone(), (float[])result.G.Clone(), (float[])result.B.Clone());
+            Deblur.Engine.Color.SrgbLinear.ToSrgbInPlace(enc.R);
+            Deblur.Engine.Color.SrgbLinear.ToSrgbInPlace(enc.G);
+            Deblur.Engine.Color.SrgbLinear.ToSrgbInPlace(enc.B);
+            result = enc;
+        }
+        // Deconvolvers and YCbCr recompose construct fresh ImageBuffers via the raw
+        // ctor, which resets SourceBitDepth to the default Eight. Propagate the input's
+        // depth so the runner is the single choke point that enforces the forensic
+        // 16-bit-preservation invariant end-to-end.
+        result.SourceBitDepth = input.SourceBitDepth;
+        return result;
+    }
 
     private void WorkerLoop()
     {
@@ -119,17 +179,7 @@ public sealed class DeblurJobRunner : IDisposable
                     _pending = null;
                 }
 
-                ImageBuffer deconv;
-                if (IsNoOp(p))
-                {
-                    deconv = proxy;
-                }
-                else
-                {
-                    var psf = _kernels[p.Type].Build(p);
-                    deconv = _deconvolvers[p.Algorithm].Apply(
-                        proxy, psf, new DeconvolutionParams(K: p.Smoothness));
-                }
+                ImageBuffer deconv = IsNoOp(p) ? proxy : RunDeconvolve(proxy, p);
 
                 int w = deconv.Width, h = deconv.Height;
                 var bgra = new byte[w * h * 4];
