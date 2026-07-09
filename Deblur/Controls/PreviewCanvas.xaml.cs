@@ -95,10 +95,8 @@ public partial class PreviewCanvas : UserControl
         var self = (PreviewCanvas)d;
         self.PreviewImage.Source = (WriteableBitmap?)e.NewValue;
         self._dragStartScreen = null;
-        self._roiAnchorImage = null;
         self.ArrowShaft.Visibility = self.ArrowHead.Visibility = Visibility.Collapsed;
-        self.RoiDragRect.Visibility = Visibility.Collapsed;
-        self.ReleaseMouseCapture();
+        self.CancelRoiDrag();
 
         // Reset the view transform so a fresh image loads fit-to-window at 1x.
         self._zoom = 1.0;
