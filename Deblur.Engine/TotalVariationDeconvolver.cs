@@ -42,7 +42,9 @@ public sealed class TotalVariationDeconvolver : IDeconvolver
                 }
             }
 
-            // p_new = p + (tau / lambda) * grad(u); then project onto unit ball.
+            // Chambolle-Pock dual step: p_new = P_C(p + tau * grad(div(p) - f/lambda)).
+            // Since u = f - lambda*div(p), grad(u)/lambda = -grad(div(p) - f/lambda),
+            // so the update in terms of u is p_new = P_C(p - (tau/lambda) * grad(u)).
             for (int y = 0; y < h; y++)
             {
                 for (int x = 0; x < w; x++)
@@ -50,8 +52,8 @@ public sealed class TotalVariationDeconvolver : IDeconvolver
                     int i = y * w + x;
                     float gx = (x < w - 1) ? u[i + 1] - u[i] : 0f;
                     float gy = (y < h - 1) ? u[i + w] - u[i] : 0f;
-                    float pxNew = px[i] + (Tau / lambda) * gx;
-                    float pyNew = py[i] + (Tau / lambda) * gy;
+                    float pxNew = px[i] - (Tau / lambda) * gx;
+                    float pyNew = py[i] - (Tau / lambda) * gy;
                     float norm = MathF.Max(1f, MathF.Sqrt(pxNew * pxNew + pyNew * pyNew));
                     px[i] = pxNew / norm;
                     py[i] = pyNew / norm;
