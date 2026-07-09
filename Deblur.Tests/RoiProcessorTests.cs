@@ -54,7 +54,8 @@ public class RoiProcessorTests
         // ground truth to the same accuracy — that's what makes ROI processing
         // a valid substitute for full-image processing when the examiner cares
         // only about the plate. So we compare each path's PSNR-vs-GT within the
-        // un-feathered core and assert they differ by less than 2 dB.
+        // un-feathered core and assert they differ by less than 3.5 dB
+        // (checkerboard worst-case gap, see threshold comment below).
         var gt = SyntheticImages.Checkerboard(128, 128, 16);
         var kernel = new MotionBlurKernel().Build(
             new KernelParams(BlurType.Motion, 30f, 10f, 0f, 0f, 0f, AlgorithmType.Wiener));
