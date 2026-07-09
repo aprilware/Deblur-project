@@ -17,6 +17,20 @@
         <Canvas x:Name="OverlayCanvas" IsHitTestVisible="False">
             <Line x:Name="ArrowShaft" Stroke="#FFEE33" StrokeThickness="2" Visibility="Collapsed"/>
             <Polygon x:Name="ArrowHead" Fill="#FFEE33" Visibility="Collapsed"/>
+            <Rectangle x:Name="RoiOverlayRect"
+                       Stroke="White" StrokeThickness="1" Fill="{x:Null}"
+                       SnapsToDevicePixels="True" Visibility="Collapsed">
+                <Rectangle.Effect>
+                    <DropShadowEffect BlurRadius="2" ShadowDepth="0" Opacity="0.6" Color="Black"/>
+                </Rectangle.Effect>
+            </Rectangle>
+            <Rectangle x:Name="RoiDragRect"
+                       Stroke="White" StrokeThickness="1" Fill="{x:Null}"
+                       SnapsToDevicePixels="True" Visibility="Collapsed">
+                <Rectangle.Effect>
+                    <DropShadowEffect BlurRadius="2" ShadowDepth="0" Opacity="0.6" Color="Black"/>
+                </Rectangle.Effect>
+            </Rectangle>
         </Canvas>
     </Grid>
 </UserControl>
