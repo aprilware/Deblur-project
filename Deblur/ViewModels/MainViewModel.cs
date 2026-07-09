@@ -153,7 +153,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private ImageBuffer? _fullResBuffer;
     private KernelParams? _fullResParams;
 
-    public async Task EnsureFullResRenderedAsync(IProgress<double> progress)
+    public async Task EnsureFullResRenderedAsync(IProgress<double> progress, CancellationToken cancellationToken = default)
     {
         if (_originalFullRes is null) throw new InvalidOperationException("No image loaded.");
         var current = BuildCurrentParams();
@@ -162,19 +162,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             progress.Report(1.0);
             return;
         }
-        _fullResBuffer = await _runner.RenderFullAsync(_originalFullRes, current, _proxyScale, progress);
+        _fullResBuffer = await _runner.RenderFullAsync(_originalFullRes, current, _proxyScale, progress, cancellationToken);
         _fullResParams = current;
     }
 
-    public async Task<byte[]> RenderFullAsPngAsync(IProgress<double> progress)
+    public async Task<byte[]> RenderFullAsPngAsync(IProgress<double> progress, CancellationToken cancellationToken = default)
     {
-        await EnsureFullResRenderedAsync(progress);
+        await EnsureFullResRenderedAsync(progress, cancellationToken);
         return ImageCodec.EncodePng(_fullResBuffer!);
     }
 
-    public async Task<byte[]> RenderFullAsJpegAsync(int quality, IProgress<double> progress)
+    public async Task<byte[]> RenderFullAsJpegAsync(int quality, IProgress<double> progress, CancellationToken cancellationToken = default)
     {
-        await EnsureFullResRenderedAsync(progress);
+        await EnsureFullResRenderedAsync(progress, cancellationToken);
         return ImageCodec.EncodeJpeg(_fullResBuffer!, quality);
     }
 

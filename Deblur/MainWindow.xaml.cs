@@ -1,4 +1,5 @@
 using System.IO;
+using System.Threading;
 using System.Windows;
 using System.Windows.Input;
 using Microsoft.Win32;
@@ -41,17 +42,30 @@ public partial class MainWindow : Window
         }
         Vm.IsBusy = true;
         Busy.Show("Rendering full resolution…");
+        Busy.SetCancellable(true);
+        using var cts = new CancellationTokenSource();
+        RoutedEventHandler cancelHandler = (_, __) => cts.Cancel();
+        Busy.CancelRequested += cancelHandler;
         try
         {
             var progress = new Progress<double>(v => Busy.SetProgress(v));
-            await Vm.EnsureFullResRenderedAsync(progress);
+            await Vm.EnsureFullResRenderedAsync(progress, cts.Token);
             Vm.StatusMessage = "Full-resolution render ready. Use File → Save As… to write it.";
+        }
+        catch (OperationCanceledException)
+        {
+            Vm.StatusMessage = "Cancelled.";
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, "Render failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
-        finally { Busy.Hide(); Vm.IsBusy = false; }
+        finally
+        {
+            Busy.CancelRequested -= cancelHandler;
+            Busy.Hide();
+            Vm.IsBusy = false;
+        }
     }
 
     private async void OnSaveAsExecuted(object sender, ExecutedRoutedEventArgs e)
@@ -71,22 +85,35 @@ public partial class MainWindow : Window
 
         Vm.IsBusy = true;
         Busy.Show("Rendering and saving…");
+        Busy.SetCancellable(true);
+        using var cts = new CancellationTokenSource();
+        RoutedEventHandler cancelHandler = (_, __) => cts.Cancel();
+        Busy.CancelRequested += cancelHandler;
         try
         {
             var progress = new Progress<double>(v => Busy.SetProgress(v));
             bool jpeg = dlg.FileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
                      || dlg.FileName.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase);
             byte[] bytes = jpeg
-                ? await Vm.RenderFullAsJpegAsync(quality: 92, progress)
-                : await Vm.RenderFullAsPngAsync(progress);
+                ? await Vm.RenderFullAsJpegAsync(quality: 92, progress, cts.Token)
+                : await Vm.RenderFullAsPngAsync(progress, cts.Token);
             File.WriteAllBytes(dlg.FileName, bytes);
             Vm.StatusMessage = $"Saved: {System.IO.Path.GetFileName(dlg.FileName)}";
+        }
+        catch (OperationCanceledException)
+        {
+            Vm.StatusMessage = "Cancelled.";
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, "Save failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
-        finally { Busy.Hide(); Vm.IsBusy = false; }
+        finally
+        {
+            Busy.CancelRequested -= cancelHandler;
+            Busy.Hide();
+            Vm.IsBusy = false;
+        }
     }
     private void OnExitClick(object sender, RoutedEventArgs e) => Close();
     private void OnResetExecuted(object sender, ExecutedRoutedEventArgs e) => Vm.Reset();
