@@ -6,6 +6,21 @@ public sealed class TotalVariationDeconvolver : IDeconvolver
     private const float Tau = 0.125f;
     private const float LambdaScale = 50f;
 
+    public AlgorithmMetadata Metadata { get; } = new(
+        Id: "tv-chambolle",
+        Version: "1.0",
+        DisplayName: "Total Variation (Chambolle post-filter)",
+        DescriptionMarkdown:
+            "Total Variation denoising via Chambolle's projected dual algorithm, " +
+            "applied as a post-filter over a Wiener warm-start. Solves " +
+            "argmin_u ||u - f||^2 / (2*lambda) + TV(u), preserving edges while " +
+            "suppressing noise. Twenty iterations of the dual projection with " +
+            "step size tau = 0.125; lambda is derived from the smoothness slider " +
+            "(K * 50) to map the UI range into a visible TV effect.",
+        LiteratureCitation:
+            "Chambolle, A. (2004). An algorithm for total variation minimization " +
+            "and applications. Journal of Mathematical Imaging and Vision, 20, 89-97.");
+
     public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p, PipelineOptions? options = null)
     {
         // Warm start: Wiener gives us the initial deblurred estimate.
