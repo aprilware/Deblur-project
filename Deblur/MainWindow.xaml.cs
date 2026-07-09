@@ -126,11 +126,26 @@ public partial class MainWindow : Window
         => new ShortcutsWindow { Owner = this }.ShowDialog();
     private void OnCancelInteractionExecuted(object sender, ExecutedRoutedEventArgs e) => Preview.CancelInteraction();
 
+    private void OnUndoExecuted(object sender, ExecutedRoutedEventArgs e) => Vm.Undo();
+    private void OnRedoExecuted(object sender, ExecutedRoutedEventArgs e) => Vm.Redo();
+
+    private void OnCanUndoExecute(object sender, CanExecuteRoutedEventArgs e)
+    {
+        e.CanExecute = Vm?.CanUndo == true;
+        e.Handled = true;
+    }
+
+    private void OnCanRedoExecute(object sender, CanExecuteRoutedEventArgs e)
+    {
+        e.CanExecute = Vm?.CanRedo == true;
+        e.Handled = true;
+    }
+
     private void OnPreviewDragging(object? sender, ArrowDragEventArgs e)
         => Vm.UpdateKernel(e.Angle, e.Length);
 
     private void OnPreviewDragCommitted(object? sender, ArrowDragEventArgs e)
-        => Vm.UpdateKernel(e.Angle, e.Length);
+        => Vm.CommitArrowDrag(e.Angle, e.Length);
 
     private void OnFileDragEnter(object sender, DragEventArgs e)
     {

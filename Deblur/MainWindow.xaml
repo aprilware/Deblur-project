@@ -29,6 +29,8 @@
         <KeyBinding Key="F5"                          Command="{x:Static local:AppCommands.RenderFull}"/>
         <KeyBinding Key="F1"                          Command="{x:Static local:AppCommands.ShowShortcuts}"/>
         <KeyBinding Key="Escape"                      Command="{x:Static local:AppCommands.CancelInteraction}"/>
+        <KeyBinding Key="Z"          Modifiers="Ctrl" Command="{x:Static local:AppCommands.Undo}"/>
+        <KeyBinding Key="Y"          Modifiers="Ctrl" Command="{x:Static local:AppCommands.Redo}"/>
     </Window.InputBindings>
 
     <Window.CommandBindings>
@@ -42,6 +44,8 @@
         <CommandBinding Command="{x:Static local:AppCommands.RenderFull}"        Executed="OnRenderFullExecuted"/>
         <CommandBinding Command="{x:Static local:AppCommands.ShowShortcuts}"     Executed="OnShowShortcutsExecuted"/>
         <CommandBinding Command="{x:Static local:AppCommands.CancelInteraction}" Executed="OnCancelInteractionExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.Undo}"              Executed="OnUndoExecuted"              CanExecute="OnCanUndoExecute"/>
+        <CommandBinding Command="{x:Static local:AppCommands.Redo}"              Executed="OnRedoExecuted"              CanExecute="OnCanRedoExecute"/>
     </Window.CommandBindings>
 
     <Grid>

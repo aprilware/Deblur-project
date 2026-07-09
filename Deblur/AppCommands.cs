@@ -35,4 +35,12 @@ public static class AppCommands
     public static readonly RoutedUICommand CancelInteraction =
         new("Cancel interaction", "CancelInteraction", typeof(AppCommands),
             new InputGestureCollection { new KeyGesture(Key.Escape) });
+
+    public static readonly RoutedUICommand Undo =
+        new("Undo", "Undo", typeof(AppCommands),
+            new InputGestureCollection { new KeyGesture(Key.Z, ModifierKeys.Control) });
+
+    public static readonly RoutedUICommand Redo =
+        new("Redo", "Redo", typeof(AppCommands),
+            new InputGestureCollection { new KeyGesture(Key.Y, ModifierKeys.Control) });
 }
