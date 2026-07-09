@@ -38,7 +38,10 @@ public class PsnrSsimTests
     [Fact]
     public void SyntheticBlur_ReducesGradientEnergy()
     {
-        var src = MakeGradient(64, 64);
+        // Step-edge input: a smooth linear gradient is a fixed point of a symmetric
+        // box filter (mean of a linear ramp = the center), so we use a hard edge —
+        // that's the natural signal for verifying a blur reduces gradient energy.
+        var src = MakeStepEdge(64, 64);
         var psf = new float[5, 5];
         for (int y = 0; y < 5; y++)
             for (int x = 0; x < 5; x++)
@@ -57,6 +60,19 @@ public class PsnrSsimTests
             {
                 int i = y * w + x;
                 float v = (float)x / (w - 1);
+                b.R[i] = v; b.G[i] = v; b.B[i] = v;
+            }
+        return b;
+    }
+
+    private static ImageBuffer MakeStepEdge(int w, int h)
+    {
+        var b = new ImageBuffer(w, h);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                int i = y * w + x;
+                float v = x < w / 2 ? 0.15f : 0.85f;
                 b.R[i] = v; b.G[i] = v; b.B[i] = v;
             }
         return b;
