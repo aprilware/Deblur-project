@@ -4,4 +4,5 @@ public enum AlgorithmType
 {
     Wiener,
     Tikhonov,
+    TotalVariation,
 }
