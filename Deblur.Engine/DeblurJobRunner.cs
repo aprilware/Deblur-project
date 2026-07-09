@@ -51,10 +51,13 @@ public sealed class DeblurJobRunner : IDisposable
     }
 
     public Task<ImageBuffer> RenderFullAsync(
-        ImageBuffer fullRes, KernelParams p, float proxyScale, IProgress<double>? progress = null)
+        ImageBuffer fullRes, KernelParams p, float proxyScale,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
+            cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(0.1);
             float scaleInv = 1f / Math.Max(proxyScale, 1e-6f);
             var scaledParams = p with
@@ -68,8 +71,10 @@ public sealed class DeblurJobRunner : IDisposable
                 progress?.Report(1.0);
                 return fullRes.Clone();
             }
+            cancellationToken.ThrowIfCancellationRequested();
             var psf = _kernels[scaledParams.Type].Build(scaledParams);
             progress?.Report(0.3);
+            cancellationToken.ThrowIfCancellationRequested();
             var result = _deconvolvers[scaledParams.Algorithm].Apply(fullRes, psf, new DeconvolutionParams(K: p.Smoothness));
             progress?.Report(1.0);
             return result;

@@ -342,4 +342,30 @@ public class DeblurJobRunnerTests
         Assert.NotEmpty(tikhonovDeconv.Applied);
         Assert.Empty(wienerDeconv.Applied);
     }
+
+    [Fact]
+    public async Task RenderFullAsync_PrecancelledToken_ThrowsOperationCanceled()
+    {
+        var kernel = new RecordingStubKernel();
+        var deconv = new SlowStubDeconvolver { SleepMs = 0 };
+        var kernels = new Dictionary<BlurType, IBlurKernel> { [BlurType.Motion] = kernel };
+        var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener]   = deconv,
+            [AlgorithmType.Tikhonov] = deconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvolvers);
+
+        var full = SyntheticImages.Checkerboard(200, 200, 10);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await runner.RenderFullAsync(
+                full,
+                new KernelParams(BlurType.Motion, 45f, 10f, 0.005f, 0f, 0f, AlgorithmType.Wiener),
+                proxyScale: 0.25f,
+                progress: null,
+                cancellationToken: cts.Token));
+    }
 }
