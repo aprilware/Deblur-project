@@ -565,11 +565,20 @@ Add near the top of `DeblurJobRunner`, alongside `_options`:
 ```csharp
 public RegionOfInterest? Roi { get; set; }
 
+// Matches the deconvolvers' internal FFT pad, max(psfW, psfH)/2 + 1, so the
+// ROI extract has enough context for Wiener's spatial-inversion tail to
+// converge. Undersizing (e.g., ceil(Length/2) for Motion) leaves the extract's
+// boundary too close to the deconvolution core and produces measurably worse
+// recovery than the whole-image path.
 private static int EstimatePsfRadius(KernelParams p) => p.Type switch
 {
-    BlurType.Motion     => (int)Math.Ceiling(p.Length / 2.0),
-    BlurType.OutOfFocus => (int)Math.Ceiling((double)p.Radius),
-    BlurType.Gaussian   => (int)Math.Ceiling(3.0 * p.Sigma),
+    // MotionBlurKernel: size = 2*ceil(Length)+1 → half-size = ceil(Length),
+    // deconvolver pad = ceil(Length) + 1.
+    BlurType.Motion     => (int)Math.Ceiling(p.Length) + 1,
+    // OutOfFocusBlurKernel: size = 2*ceil(Radius)+1 → deconvolver pad = ceil(Radius) + 1.
+    BlurType.OutOfFocus => (int)Math.Ceiling((double)p.Radius) + 1,
+    // GaussianBlurKernel: size ≈ 2*ceil(3*Sigma)+1 → deconvolver pad ≈ ceil(3*Sigma) + 1.
+    BlurType.Gaussian   => (int)Math.Ceiling(3.0 * p.Sigma) + 1,
     _                   => 1,
 };
 ```
