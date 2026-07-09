@@ -51,8 +51,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         };
         var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
         {
-            [AlgorithmType.Wiener]   = new WienerDeconvolver(),
-            [AlgorithmType.Tikhonov] = new TikhonovDeconvolver(),
+            [AlgorithmType.Wiener]         = new WienerDeconvolver(),
+            [AlgorithmType.Tikhonov]       = new TikhonovDeconvolver(),
+            [AlgorithmType.TotalVariation] = new TotalVariationDeconvolver(),
         };
         _runner = new DeblurJobRunner(kernels, deconvolvers);
         _runner.ProxyReady += OnProxyReady;
