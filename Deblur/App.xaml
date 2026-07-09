@@ -1,8 +1,17 @@
 <Application x:Class="Deblur.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
+             xmlns:engine="clr-namespace:Deblur.Engine;assembly=Deblur.Engine"
+             xmlns:converters="clr-namespace:Deblur.Converters"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:AlgorithmToSmoothnessLabelConverter x:Key="AlgLabel"/>
+        <ObjectDataProvider x:Key="AlgorithmTypeValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="engine:AlgorithmType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
     </Application.Resources>
 </Application>

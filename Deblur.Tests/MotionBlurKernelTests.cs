@@ -23,7 +23,7 @@ public class MotionBlurKernelTests
     public void Kernel_SumsToOne(float angleDeg, float length)
     {
         var k = new MotionBlurKernel().Build(
-            new KernelParams(BlurType.Motion, angleDeg, length, 0));
+            new KernelParams(BlurType.Motion, angleDeg, length, 0, 0f, 0f, AlgorithmType.Wiener));
         Assert.InRange(Sum(k), 0.999999f, 1.000001f);
     }
 
@@ -31,7 +31,7 @@ public class MotionBlurKernelTests
     public void Length1_ProducesIdentityKernel()
     {
         var k = new MotionBlurKernel().Build(
-            new KernelParams(BlurType.Motion, 45f, 1f, 0));
+            new KernelParams(BlurType.Motion, 45f, 1f, 0, 0f, 0f, AlgorithmType.Wiener));
         // 3x3 with only center non-zero and equal to 1
         Assert.Equal(3, k.GetLength(0));
         Assert.Equal(3, k.GetLength(1));
@@ -46,9 +46,9 @@ public class MotionBlurKernelTests
     public void AngleFlip_180Degrees_ProducesEquivalentKernel()
     {
         var a = new MotionBlurKernel().Build(
-            new KernelParams(BlurType.Motion, 30f, 15f, 0));
+            new KernelParams(BlurType.Motion, 30f, 15f, 0, 0f, 0f, AlgorithmType.Wiener));
         var b = new MotionBlurKernel().Build(
-            new KernelParams(BlurType.Motion, 30f + 180f, 15f, 0));
+            new KernelParams(BlurType.Motion, 30f + 180f, 15f, 0, 0f, 0f, AlgorithmType.Wiener));
         Assert.Equal(a.GetLength(0), b.GetLength(0));
         for (int y = 0; y < a.GetLength(0); y++)
             for (int x = 0; x < a.GetLength(1); x++)
@@ -59,7 +59,7 @@ public class MotionBlurKernelTests
     public void FortyFiveDegrees_HasNonZeroOffAxisWeights()
     {
         var k = new MotionBlurKernel().Build(
-            new KernelParams(BlurType.Motion, 45f, 10f, 0));
+            new KernelParams(BlurType.Motion, 45f, 10f, 0, 0f, 0f, AlgorithmType.Wiener));
         // Somewhere in the kernel there must be a pixel that is neither on the
         // horizontal nor vertical axis through center that carries weight;
         // this fails if we fell back to axis-aligned rasterization.

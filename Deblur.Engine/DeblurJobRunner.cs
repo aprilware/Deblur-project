@@ -9,8 +9,8 @@ public sealed class ProxyReadyEventArgs : EventArgs
 
 public sealed class DeblurJobRunner : IDisposable
 {
-    private readonly IBlurKernel _kernel;
-    private readonly IDeconvolver _deconvolver;
+    private readonly IReadOnlyDictionary<BlurType, IBlurKernel> _kernels;
+    private readonly IReadOnlyDictionary<AlgorithmType, IDeconvolver> _deconvolvers;
     private readonly Thread _worker;
     private readonly ManualResetEventSlim _signal = new(false);
     private readonly object _lock = new();
@@ -21,15 +21,20 @@ public sealed class DeblurJobRunner : IDisposable
 
     public event EventHandler<ProxyReadyEventArgs>? ProxyReady;
 
+    /// <summary>Fires on the worker thread each time the pending queue drains to empty.</summary>
+    public event EventHandler? Idle;
+
     public bool HasPending
     {
         get { lock (_lock) return _pending.HasValue; }
     }
 
-    public DeblurJobRunner(IBlurKernel kernel, IDeconvolver deconvolver)
+    public DeblurJobRunner(
+        IReadOnlyDictionary<BlurType, IBlurKernel> kernels,
+        IReadOnlyDictionary<AlgorithmType, IDeconvolver> deconvolvers)
     {
-        _kernel = kernel;
-        _deconvolver = deconvolver;
+        _kernels = kernels;
+        _deconvolvers = deconvolvers;
         _worker = new Thread(WorkerLoop) { IsBackground = true, Name = "DeblurWorker" };
         _worker.Start();
     }
@@ -41,24 +46,55 @@ public sealed class DeblurJobRunner : IDisposable
 
     public void Request(KernelParams p)
     {
-        lock (_lock) _pending = p;   // overwrite: only latest matters
+        lock (_lock) _pending = p;
         _signal.Set();
     }
 
     public Task<ImageBuffer> RenderFullAsync(
-        ImageBuffer fullRes, KernelParams p, float proxyScale, IProgress<double>? progress = null)
+        ImageBuffer fullRes, KernelParams p, float proxyScale,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
+            cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(0.1);
-            var scaledParams = p with { Length = p.Length / Math.Max(proxyScale, 1e-6f) };
-            var psf = _kernel.Build(scaledParams);
+            float scaleInv = 1f / Math.Max(proxyScale, 1e-6f);
+            var scaledParams = p with
+            {
+                Length = p.Length * scaleInv,
+                Radius = p.Radius * scaleInv,
+                Sigma  = p.Sigma  * scaleInv,
+            };
+            if (IsNoOp(scaledParams))
+            {
+                progress?.Report(1.0);
+                return fullRes.Clone();
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            var psf = _kernels[scaledParams.Type].Build(scaledParams);
             progress?.Report(0.3);
-            var result = _deconvolver.Apply(fullRes, psf, new DeconvolutionParams(K: p.Smoothness));
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = _deconvolvers[scaledParams.Algorithm].Apply(fullRes, psf, new DeconvolutionParams(K: p.Smoothness));
             progress?.Report(1.0);
             return result;
         });
     }
+
+    /// <summary>
+    /// Returns true for parameter sets that produce a raw-passthrough (no deconvolution) result.
+    /// Any BlurType this switch treats as a no-op need not be present in the injected kernel
+    /// dictionary; any type that reaches the else branch of WorkerLoop / RenderFullAsync MUST
+    /// have a corresponding entry. Keep this switch in sync with the dictionary the caller
+    /// injects in MainViewModel.
+    /// </summary>
+    private static bool IsNoOp(KernelParams p) => p.Type switch
+    {
+        BlurType.Motion     => p.Length < 1f,
+        BlurType.OutOfFocus => p.Radius < 1f,
+        BlurType.Gaussian   => p.Sigma  < 1f,
+        _                   => true,
+    };
 
     private void WorkerLoop()
     {
@@ -73,17 +109,28 @@ public sealed class DeblurJobRunner : IDisposable
                 ImageBuffer? proxy;
                 lock (_lock)
                 {
-                    if (_pending is null || _proxy is null) break;
+                    if (_pending is null || _proxy is null)
+                    {
+                        if (_running) Idle?.Invoke(this, EventArgs.Empty);
+                        break;
+                    }
                     p = _pending.Value;
                     proxy = _proxy;
                     _pending = null;
                 }
 
-                var psf = _kernel.Build(p);
-                var deconv = _deconvolver.Apply(
-                    proxy, psf, new DeconvolutionParams(K: p.Smoothness));
+                ImageBuffer deconv;
+                if (IsNoOp(p))
+                {
+                    deconv = proxy;
+                }
+                else
+                {
+                    var psf = _kernels[p.Type].Build(p);
+                    deconv = _deconvolvers[p.Algorithm].Apply(
+                        proxy, psf, new DeconvolutionParams(K: p.Smoothness));
+                }
 
-                // Convert to BGRA.
                 int w = deconv.Width, h = deconv.Height;
                 var bgra = new byte[w * h * 4];
                 for (int y = 0; y < h; y++)

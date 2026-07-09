@@ -5,6 +5,7 @@
         xmlns:vm="clr-namespace:Deblur.ViewModels"
         xmlns:engine="clr-namespace:Deblur.Engine;assembly=Deblur.Engine"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:local="clr-namespace:Deblur"
         Title="Deblur" Height="720" Width="1200"
         AllowDrop="True">
     <Window.DataContext><vm:MainViewModel/></Window.DataContext>
@@ -16,14 +17,48 @@
         </ObjectDataProvider>
     </Window.Resources>
 
+    <Window.InputBindings>
+        <!-- ApplicationCommands.Open ships with Ctrl+O built in; SaveAs has no default gesture, wire it here. -->
+        <KeyBinding Key="S"          Modifiers="Ctrl" Command="ApplicationCommands.SaveAs"/>
+
+        <KeyBinding Key="R"          Modifiers="Ctrl" Command="{x:Static local:AppCommands.Reset}"/>
+        <KeyBinding Key="D0"         Modifiers="Ctrl" Command="{x:Static local:AppCommands.FitToWindow}"/>
+        <KeyBinding Key="D1"         Modifiers="Ctrl" Command="{x:Static local:AppCommands.PixelPerfect}"/>
+        <KeyBinding Key="OemPlus"    Modifiers="Ctrl" Command="{x:Static local:AppCommands.ZoomIn}"/>
+        <KeyBinding Key="OemMinus"   Modifiers="Ctrl" Command="{x:Static local:AppCommands.ZoomOut}"/>
+        <KeyBinding Key="F5"                          Command="{x:Static local:AppCommands.RenderFull}"/>
+        <KeyBinding Key="F1"                          Command="{x:Static local:AppCommands.ShowShortcuts}"/>
+        <KeyBinding Key="Escape"                      Command="{x:Static local:AppCommands.CancelInteraction}"/>
+        <KeyBinding Key="Z"          Modifiers="Ctrl" Command="{x:Static local:AppCommands.Undo}"/>
+        <KeyBinding Key="Y"          Modifiers="Ctrl" Command="{x:Static local:AppCommands.Redo}"/>
+    </Window.InputBindings>
+
+    <Window.CommandBindings>
+        <CommandBinding Command="ApplicationCommands.Open"                       Executed="OnOpenExecuted"/>
+        <CommandBinding Command="ApplicationCommands.SaveAs"                     Executed="OnSaveAsExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.Reset}"             Executed="OnResetExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.FitToWindow}"       Executed="OnFitExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.PixelPerfect}"      Executed="OnPixelPerfectExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.ZoomIn}"            Executed="OnZoomInExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.ZoomOut}"           Executed="OnZoomOutExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.RenderFull}"        Executed="OnRenderFullExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.ShowShortcuts}"     Executed="OnShowShortcutsExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.CancelInteraction}" Executed="OnCancelInteractionExecuted"/>
+        <CommandBinding Command="{x:Static local:AppCommands.Undo}"              Executed="OnUndoExecuted"              CanExecute="OnCanUndoExecute"/>
+        <CommandBinding Command="{x:Static local:AppCommands.Redo}"              Executed="OnRedoExecuted"              CanExecute="OnCanRedoExecute"/>
+    </Window.CommandBindings>
+
     <Grid>
         <DockPanel>
             <Menu DockPanel.Dock="Top">
                 <MenuItem Header="_File">
-                    <MenuItem Header="_Open..." Click="OnOpenClick"/>
-                    <MenuItem Header="_Save As..." Click="OnSaveAsClick"/>
+                    <MenuItem Header="_Open..." Command="ApplicationCommands.Open"/>
+                    <MenuItem Header="_Save As..." Command="ApplicationCommands.SaveAs" InputGestureText="Ctrl+S"/>
                     <Separator/>
                     <MenuItem Header="E_xit" Click="OnExitClick"/>
+                </MenuItem>
+                <MenuItem Header="_Help">
+                    <MenuItem Header="_Keyboard Shortcuts..." Command="{x:Static local:AppCommands.ShowShortcuts}"/>
                 </MenuItem>
             </Menu>
 
@@ -35,6 +70,7 @@
 
                 <controls:PreviewCanvas x:Name="Preview" Grid.Column="0"
                                         Source="{Binding PreviewBitmap}"
+                                        IsArrowEnabled="{Binding IsMotionSelected}"
                                         Dragging="OnPreviewDragging"
                                         DragCommitted="OnPreviewDragCommitted"/>
 
@@ -43,6 +79,10 @@
                     <ComboBox ItemsSource="{Binding Source={StaticResource BlurTypeValues}}"
                               SelectedItem="{Binding SelectedBlurType}"/>
 
+                    <TextBlock Text="Algorithm" FontWeight="Bold" Margin="0,12,0,4"/>
+                    <ComboBox ItemsSource="{Binding Source={StaticResource AlgorithmTypeValues}}"
+                              SelectedItem="{Binding SelectedAlgorithm}"/>
+
                     <Grid Margin="0,12,0,0" Visibility="{Binding IsMotionSelected, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <TextBlock Text="Angle (°)" Margin="0,4,0,0"/>
@@ -50,21 +90,38 @@
                             <TextBlock Text="{Binding Angle, StringFormat={}{0:0.0}}" HorizontalAlignment="Right"/>
 
                             <TextBlock Text="Length (px, proxy)" Margin="0,8,0,0"/>
-                            <Slider Minimum="1" Maximum="100" Value="{Binding Length}"/>
+                            <Slider Minimum="0" Maximum="100" Value="{Binding Length}"/>
                             <TextBlock Text="{Binding Length, StringFormat={}{0:0.0}}" HorizontalAlignment="Right"/>
-
-                            <TextBlock Text="Smoothness" Margin="0,8,0,0"/>
-                            <Slider Minimum="0.0001" Maximum="0.1" SmallChange="0.0005" Value="{Binding Smoothness}"/>
-                            <TextBlock Text="{Binding Smoothness, StringFormat={}{0:0.0000}}" HorizontalAlignment="Right"/>
-
-                            <Button Content="Reset" Margin="0,12,0,0" Click="OnResetClick"/>
-                            <Button Content="Render full resolution" Margin="0,8,0,0" Click="OnRenderFullClick"/>
                         </StackPanel>
                     </Grid>
 
-                    <TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
-                               Visibility="{Binding IsComingSoon, Converter={StaticResource BoolToVis}}"
-                               Text="This blur type will be supported in a future phase. Select 'Motion' to try the current build."/>
+                    <Grid Margin="0,12,0,0" Visibility="{Binding IsOutOfFocusSelected, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="Radius (px, proxy)" Margin="0,4,0,0"/>
+                            <Slider Minimum="0" Maximum="50" Value="{Binding Radius}"/>
+                            <TextBlock Text="{Binding Radius, StringFormat={}{0:0.0}}" HorizontalAlignment="Right"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Margin="0,12,0,0" Visibility="{Binding IsGaussianSelected, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="Sigma (px, proxy)" Margin="0,4,0,0"/>
+                            <Slider Minimum="0" Maximum="10" Value="{Binding Sigma}"/>
+                            <TextBlock Text="{Binding Sigma, StringFormat={}{0:0.0}}" HorizontalAlignment="Right"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Margin="0,12,0,0" Visibility="{Binding HasImage, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding SelectedAlgorithm, Converter={StaticResource AlgLabel}}" Margin="0,4,0,0"/>
+                        <Slider Minimum="0.0001" Maximum="0.1" SmallChange="0.0005" Value="{Binding Smoothness}"/>
+                        <TextBlock Text="{Binding Smoothness, StringFormat={}{0:0.0000}}" HorizontalAlignment="Right"/>
+
+                        <Button Content="Reset" Margin="0,12,0,0" Command="{x:Static local:AppCommands.Reset}"/>
+                        <Button Content="Render full resolution" Margin="0,8,0,0" Command="{x:Static local:AppCommands.RenderFull}"/>
+                    </StackPanel>
+
+                    <ProgressBar Margin="0,12,0,0" Height="4" IsIndeterminate="True"
+                                 Visibility="{Binding IsPreviewComputing, Converter={StaticResource BoolToVis}}"/>
 
                     <TextBlock Margin="0,20,0,0" Text="{Binding StatusMessage}" TextWrapping="Wrap" Foreground="#888"/>
                 </StackPanel>
