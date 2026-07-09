@@ -343,6 +343,42 @@ public class DeblurJobRunnerTests
         Assert.Empty(wienerDeconv.Applied);
     }
 
+    // Regression: production deconvolvers construct their result via the raw
+    // ImageBuffer(w,h,r,g,b) ctor, which resets SourceBitDepth to the default
+    // Eight. The runner is the choke point that must re-stamp the input's depth
+    // onto the result. Without that, 16-bit source images silently exported as
+    // 8-bit after any non-noop deconvolution.
+    private sealed class FreshBufferStubDeconvolver : IDeconvolver
+    {
+        public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p, PipelineOptions? options = null)
+            => new ImageBuffer(input.Width, input.Height,
+                (float[])input.R.Clone(), (float[])input.G.Clone(), (float[])input.B.Clone());
+    }
+
+    [Fact]
+    public async Task RenderFullAsync_Preserves16BitSourceDepth_ThroughDeconvolution()
+    {
+        var kernel = new RecordingStubKernel();
+        var deconv = new FreshBufferStubDeconvolver();
+        var kernels = new Dictionary<BlurType, IBlurKernel> { [BlurType.Motion] = kernel };
+        var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener]   = deconv,
+            [AlgorithmType.Tikhonov] = deconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvolvers);
+
+        var full = SyntheticImages.Checkerboard(64, 64, 8);
+        full.SourceBitDepth = BitDepth.Sixteen;
+
+        var result = await runner.RenderFullAsync(
+            full,
+            new KernelParams(BlurType.Motion, 45f, 10f, 0.005f, 0f, 0f, AlgorithmType.Wiener),
+            proxyScale: 1f);
+
+        Assert.Equal(BitDepth.Sixteen, result.SourceBitDepth);
+    }
+
     [Fact]
     public async Task RenderFullAsync_PrecancelledToken_ThrowsOperationCanceled()
     {

@@ -148,6 +148,11 @@ public sealed class DeblurJobRunner : IDisposable
             Deblur.Engine.Color.SrgbLinear.ToSrgbInPlace(enc.B);
             result = enc;
         }
+        // Deconvolvers and YCbCr recompose construct fresh ImageBuffers via the raw
+        // ctor, which resets SourceBitDepth to the default Eight. Propagate the input's
+        // depth so the runner is the single choke point that enforces the forensic
+        // 16-bit-preservation invariant end-to-end.
+        result.SourceBitDepth = input.SourceBitDepth;
         return result;
     }
 
