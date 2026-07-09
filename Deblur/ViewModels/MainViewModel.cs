@@ -15,6 +15,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private ImageBuffer? _originalFullRes;
     private ImageBuffer? _proxy;
     private float _proxyScale = 1f;
+    private readonly ParamHistory _history = new();
+    private bool _suppressHistory;
 
     [ObservableProperty] private BlurType _selectedBlurType = BlurType.Motion;
     [ObservableProperty] private AlgorithmType _selectedAlgorithm = AlgorithmType.Wiener;
@@ -35,6 +37,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public bool HasImage => _proxy is not null;
     public bool IsWienerSelected   => SelectedAlgorithm == AlgorithmType.Wiener;
     public bool IsTikhonovSelected => SelectedAlgorithm == AlgorithmType.Tikhonov;
+    public bool CanUndo => _history.CanUndo;
+    public bool CanRedo => _history.CanRedo;
 
     public MainViewModel()
     {
@@ -84,6 +88,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         // Preserve each type's own params across switches; the user can hit Reset
         // if they want to clear the active type.
         PushCurrentParams();
+        PushSnapshot();
     }
 
     partial void OnSelectedAlgorithmChanged(AlgorithmType value)
@@ -92,6 +97,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsTikhonovSelected));
         InvalidateFullResCache();
         PushCurrentParams();
+        PushSnapshot();
     }
 
     public void LoadImageFromBytes(byte[] bytes)
@@ -111,6 +117,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         PreviewBitmap = ImageBufferInterop.NewCompatibleBitmap(pw, ph);
         _runner.SetProxy(_proxy);
         OnPropertyChanged(nameof(HasImage));
+        _history.Clear();
+        OnPropertyChanged(nameof(CanUndo));
+        OnPropertyChanged(nameof(CanRedo));
         Reset();
     }
 
@@ -121,6 +130,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Angle = angle;
         Length = length;
         PushCurrentParams();
+    }
+
+    public void CommitArrowDrag(float angle, float length)
+    {
+        if (SelectedBlurType != BlurType.Motion) return;
+        Angle = angle;
+        Length = length;
+        PushCurrentParams();
+        PushSnapshot();
     }
 
     partial void OnSmoothnessChanged(float value) { InvalidateFullResCache(); PushCurrentParams(); }
@@ -147,6 +165,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         Smoothness = 0.005f;
         PushCurrentParams();
+        PushSnapshot();
     }
 
     // Cached full-resolution render; invalidated on any param change.
@@ -221,6 +240,47 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             }
         }
         return dst;
+    }
+
+    public void Undo()
+    {
+        if (!_history.TryUndo(out var previous)) return;
+        ApplySnapshot(previous);
+    }
+
+    public void Redo()
+    {
+        if (!_history.TryRedo(out var next)) return;
+        ApplySnapshot(next);
+    }
+
+    private void ApplySnapshot(KernelParams p)
+    {
+        _suppressHistory = true;
+        try
+        {
+            SelectedBlurType  = p.Type;
+            SelectedAlgorithm = p.Algorithm;
+            Angle             = p.Angle;
+            Length            = p.Length;
+            Radius            = p.Radius;
+            Sigma             = p.Sigma;
+            Smoothness        = p.Smoothness;
+        }
+        finally
+        {
+            _suppressHistory = false;
+        }
+        OnPropertyChanged(nameof(CanUndo));
+        OnPropertyChanged(nameof(CanRedo));
+    }
+
+    private void PushSnapshot()
+    {
+        if (_suppressHistory || _proxy is null) return;
+        _history.Push(BuildCurrentParams());
+        OnPropertyChanged(nameof(CanUndo));
+        OnPropertyChanged(nameof(CanRedo));
     }
 
     public void Dispose() => _runner.Dispose();
