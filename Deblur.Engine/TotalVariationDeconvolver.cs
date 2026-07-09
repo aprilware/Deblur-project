@@ -6,10 +6,10 @@ public sealed class TotalVariationDeconvolver : IDeconvolver
     private const float Tau = 0.125f;
     private const float LambdaScale = 50f;
 
-    public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p)
+    public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p, PipelineOptions? options = null)
     {
         // Warm start: Wiener gives us the initial deblurred estimate.
-        var wiener = new WienerDeconvolver().Apply(input, psf, p);
+        var wiener = new WienerDeconvolver().Apply(input, psf, p, options);
 
         // Then apply Chambolle-Pock TV denoising per channel.
         float lambda = MathF.Max(p.K * LambdaScale, 1e-6f);

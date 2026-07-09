@@ -13,7 +13,7 @@ public class DeblurJobRunnerTests
         public readonly ConcurrentBag<float> ObservedAngles = new();
         public int SleepMs { get; init; } = 10;
 
-        public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p)
+        public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p, PipelineOptions? options = null)
         {
             Interlocked.Increment(ref CallCount);
             Thread.Sleep(SleepMs);
@@ -32,7 +32,7 @@ public class DeblurJobRunnerTests
         public readonly System.Collections.Concurrent.ConcurrentBag<KernelParams> Applied = new();
         public int SleepMs { get; init; } = 0;
 
-        public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p)
+        public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p, PipelineOptions? options = null)
         {
             // We only need the algorithm for routing; the caller's KernelParams isn't
             // reachable here, so we record something distinguishable via the PSF hash.
