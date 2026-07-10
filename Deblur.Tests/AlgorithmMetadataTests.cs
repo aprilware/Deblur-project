@@ -13,6 +13,9 @@ public class AlgorithmMetadataTests
             new WienerDeconvolver(),
             new TikhonovDeconvolver(),
             new TotalVariationDeconvolver(),
+            new RichardsonLucyDeconvolver(),
+            new ConstrainedLeastSquaresDeconvolver(),
+            new LandweberDeconvolver(),
         };
         foreach (var d in deconvolvers)
         {
@@ -30,9 +33,15 @@ public class AlgorithmMetadataTests
     [Fact]
     public void KnownIds_AreStable()
     {
+        // Renaming any of these breaks audit-log correlation with historical
+        // renders — treat any change here as a forensic-reproducibility break
+        // and bump Version in Metadata accordingly.
         Assert.Equal("wiener",             new WienerDeconvolver().Metadata.Id);
         Assert.Equal("tikhonov-laplacian", new TikhonovDeconvolver().Metadata.Id);
         Assert.Equal("tv-chambolle",       new TotalVariationDeconvolver().Metadata.Id);
+        Assert.Equal("richardson-lucy",    new RichardsonLucyDeconvolver().Metadata.Id);
+        Assert.Equal("cls-laplacian",      new ConstrainedLeastSquaresDeconvolver().Metadata.Id);
+        Assert.Equal("landweber",          new LandweberDeconvolver().Metadata.Id);
     }
 
     [Fact]
@@ -43,6 +52,9 @@ public class AlgorithmMetadataTests
             new WienerDeconvolver().Metadata.Id,
             new TikhonovDeconvolver().Metadata.Id,
             new TotalVariationDeconvolver().Metadata.Id,
+            new RichardsonLucyDeconvolver().Metadata.Id,
+            new ConstrainedLeastSquaresDeconvolver().Metadata.Id,
+            new LandweberDeconvolver().Metadata.Id,
         };
         Assert.Equal(ids.Length, ids.Distinct().Count());
     }
