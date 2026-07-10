@@ -24,6 +24,10 @@ The examiner loads an image blurred by motion of unknown length/angle. They clic
 
 ## Approach
 
+### Global estimator invariant
+
+Every estimator operates on `_originalFullRes` decoded to linear light (`SrgbLinear.ToLinear` applied to R/G/B, then combined to a linear-space grayscale via BT.601 weights). Never the proxy — area-averaged proxies have deflated noise variance and would produce σ estimates too small to correctly regularize a full-res render. Motion length and defocus radius are pixel-scaled quantities that are numerically correct only in the full-res image coordinate system. This invariant is enforced at the `MainViewModel` call site, not by each estimator individually (each estimator is a pure `(grayscale float[], int width, int height) → estimate` function; the VM is responsible for producing the linear-light full-res grayscale).
+
 ### 1. Cepstral motion estimator
 
 New `Deblur.Engine/Estimation/CepstralMotionEstimator.cs`. Steps:
@@ -59,9 +63,11 @@ Reference: Krahmer et al. (2006) "Blind image deconvolution: motion blur estimat
 New `Deblur.Engine/Estimation/DefocusRadiusEstimator.cs`. Steps:
 
 1. Compute the radial average of the power spectrum: for each radius bin `r`, average `|F(u, v)|²` over all `(u, v)` with `√(u² + v²) ≈ r`.
-2. A disc PSF of radius R has Fourier transform proportional to `2·J₁(2πRρ)/(2πRρ)` where `J₁` is the first-order Bessel function. Its first zero-crossing is at `ρ ≈ 1.22/R` (Airy-disc first null).
-3. Find the first minimum in the radial power spectrum where the log-power crosses below a threshold (say, mean − 2·std) → get `ρ_first_zero`.
-4. Estimate `R ≈ 1.22 / ρ_first_zero`.
+2. A disc PSF of radius R has Fourier transform proportional to `2·J₁(2πRρ)/(2πRρ)` where `J₁` is the first-order Bessel function. `J₁`'s first zero is at `2πRρ ≈ 3.8317`, so the first zero-crossing of the transform is at `ρ ≈ 0.6098/R` (NOT the 1.22/R Airy-disc value — that's for the diameter, not the radius).
+3. Find the first local minimum in the smoothed radial log-power spectrum (small median filter over ~3 bins to suppress ring noise, then scan outward from the DC bin until the derivative changes sign) → get `ρ_first_zero`.
+4. Estimate `R ≈ 0.6098 / ρ_first_zero`.
+
+Local-minimum detection is used rather than a mean−2σ threshold because the threshold approach is brittle to overall spectrum shape (a strongly low-pass image has low mean and never reaches "mean−2σ" at the first zero).
 
 Returns `DefocusEstimate(float Radius, float Confidence)`.
 
@@ -77,9 +83,11 @@ New `Deblur.Engine/Estimation/WaveletNoiseEstimator.cs`. Steps:
 
 Returns `NoiseEstimate(float Sigma, float Confidence)`.
 
-For Wiener, the suggested K is proportional to `σ²` (noise variance) — the classical Wiener NSR interpretation. Suggested slider K = `Clamp(σ² * scale, K_min, K_max)` where `scale` is empirically tuned so σ=0.01 → K≈0.005.
+For the Wiener K suggestion, use the classical **NSR interpretation**: `K = σ_noise² / σ_signal²`, where `σ_signal²` is estimated as `max(var(image_LL) − σ_noise², ε)` — subtracting the noise variance from the image's low-frequency variance to isolate signal power. This is the standard whitened-noise-to-signal ratio Wiener assumes; not an empirically-tuned scaling. The estimator's `DescriptionMarkdown` states the formula explicitly for testimony.
 
-Reference: Donoho & Johnstone (1994) "Ideal spatial adaptation by wavelet shrinkage."
+The `NoiseEstimate` record surfaces `SuggestedK`, `SigmaNoise`, and `SigmaSignal` so the examiner sees the components. Slider clamp to `K ∈ [1e-6, 1.0]` is UI-side (matches the existing slider range).
+
+Reference: Donoho & Johnstone (1994) "Ideal spatial adaptation by wavelet shrinkage." NSR formula: Wiener (1949) as documented in `WienerDeconvolver.Metadata`.
 
 Haar wavelet chosen (not Daubechies-4) because it's a trivial one-line-per-coefficient transform and MAD is robust to the wavelet choice; upgrade to Daubechies is a future micro-optimization.
 
@@ -87,15 +95,16 @@ Haar wavelet chosen (not Daubechies-4) because it's a trivial one-line-per-coeff
 
 Modify `Deblur.Engine/ConstrainedLeastSquaresDeconvolver.cs`. Bump `Version` from `"1.0"` to `"2.0"`. Behavior change:
 
-- New constructor: `ConstrainedLeastSquaresDeconvolver(float? noiseVariance = null)`.
-- `null` (default): behavior identical to v1.0 (fixed γ = K·(E_C/E_H)). Preserves the parameter-less usage.
-- Non-null: γ selected via discrepancy principle — solve for γ such that `Σ|H·x̂ - y|² = fftSize² · noiseVariance` where `x̂ = deconvolve(y; γ)`. Uses bisection on γ over `[γ_min, γ_max]` = `[1e-8, 1e2]`.
+- `DeconvolutionParams` gains a nullable `NoiseVariance` field: `DeconvolutionParams(float K, float? NoiseVariance = null)`. Recordable and replayable — Phase 2's recipes carry it in serialized form; hidden constructor state would break provenance.
+- `NoiseVariance == null`: behavior identical to v1.0 (fixed γ = K·(E_C/E_H)). Preserves parameter-less usage.
+- `NoiseVariance != null`: γ selected via discrepancy principle. Target: `||H·x̂ − y||²_{un-padded} ≈ N_pixels · σ²` where `N_pixels = input.Width · input.Height` (the un-padded original), NOT `fftSize² · σ²` (the padded canvas — reflected fill inflates the target).
+- Compute the residual sum-of-squares in the frequency domain via Parseval, then scale to the un-padded region. Bisection needs no per-trial iFFT: for a Tikhonov-shape filter `filter = conj(H)/(|H|² + γ·|C|²)`, the residual `H·X̂ − Y` has closed-form `−γ · |C|² · Y / (|H|² + γ·|C|²)`, so each bisection step is one frequency-domain sum. Bisection over γ ∈ `[1e-8, 1e2]` to a tolerance of 0.5% of the target.
 
-The `MainViewModel` wires the wavelet-noise-estimate acceptance to pass `noiseVariance = σ̂²` into a freshly-constructed CLS instance for the next render. If no noise estimate is accepted, CLS falls back to v1.0 fixed-γ behavior at the current K slider.
+The `MainViewModel` wires the wavelet-noise-estimate acceptance to store `σ̂²` on the VM and pass it through `DeconvolutionParams` on the next render. If no noise estimate is accepted, `DeconvolutionParams.NoiseVariance` stays null and CLS falls back to v1.0 fixed-γ behavior at the current K slider.
 
-`Metadata.Version` bumps to `"2.0"`. `Metadata.DescriptionMarkdown` gains a paragraph naming the adaptive-γ mode ("when a noise variance estimate is provided, γ is chosen via the discrepancy principle; when not, γ is the fixed-scaling from v1.0"). `Metadata.Id` stays `"cls-laplacian"` — same algorithm, upgraded implementation. Version bump is the forensic-provenance marker (any old audit log referencing `cls-laplacian@1.0` would not match output from `cls-laplacian@2.0`, forcing an intentional re-check).
+`Metadata.Version` bumps to `"2.0"`. `Metadata.DescriptionMarkdown` gains a paragraph naming the adaptive-γ mode ("when a noise variance is provided via DeconvolutionParams, γ is chosen via the discrepancy principle so ||H·x̂ − y||²_{un-padded} ≈ N_pixels · σ²; when null, γ is the fixed PSF-energy scaling from v1.0"). `Metadata.Id` stays `"cls-laplacian"` — same algorithm, upgraded implementation. Version bump is the forensic-provenance marker (any old audit log referencing `cls-laplacian@1.0` would not match output from `cls-laplacian@2.0`, forcing an intentional re-check).
 
-Since no production audit log exists yet, this in-place upgrade is safe.
+Since no production audit log exists yet, this in-place upgrade is safe. All other deconvolvers ignore `p.NoiseVariance` — additive change, no breaking of their behavior.
 
 ### 6. UI integration
 
@@ -108,9 +117,11 @@ Sidebar changes per blur type:
 
 New `MainViewModel` properties and commands:
 - `MotionSuggestion` / `DefocusSuggestion` / `NoiseSuggestion` — nullable observable objects.
-- `EstimateMotionCommand`, `EstimateDefocusCommand`, `EstimateNoiseCommand` — trigger the estimators on `_originalFullRes` (or `_proxy` if noise is being estimated on the display-scale image, which is normal).
+- `EstimateMotionCommand`, `EstimateDefocusCommand`, `EstimateNoiseCommand` — trigger the estimators on `_originalFullRes` **decoded to linear light** (never the proxy). Area-averaged proxies have reduced noise variance (variance decays as 1/N for N-pixel box averaging), so a proxy-estimated σ would under-regularize the full-res render. Motion length and defocus radius are also pixel-scaled quantities — proxy-scale estimates would need a `1/_proxyScale` correction. Running on `_originalFullRes` in linear light gives the physical parameters directly.
 - `AcceptMotionSuggestion` / `AcceptDefocusSuggestion` / `AcceptNoiseSuggestion` — populate the underlying sliders and clear the suggestion.
 - `DismissMotionSuggestion` / etc. — clear without accepting.
+
+Estimator invocation cost: cepstral + Radon on a 4K image is one FFT and a Radon sweep — a few hundred milliseconds. Defocus radius is one radial average — under 100 ms. Wavelet MAD is one Haar decomposition — trivial. Full-res + linear-light preprocessing is done once per estimate click, cached until the image changes.
 
 New `SuggestionRecord` type (`Deblur.Engine/Estimation/SuggestionRecord.cs`) captures: `EstimatorId`, `EstimatorVersion`, `SuggestedValue`, `Confidence`, `AcceptedAtUtc?`, `DismissedAtUtc?`. The VM maintains a `SuggestionHistory` list in-memory. Phase 2's audit log will read from this list.
 
@@ -134,7 +145,8 @@ New `SuggestionRecord` type (`Deblur.Engine/Estimation/SuggestionRecord.cs`) cap
 - `Estimation/SuggestionRecord.cs` (record for the audit-log-precursor)
 
 **Modified in `Deblur.Engine`:**
-- `ConstrainedLeastSquaresDeconvolver.cs` — v2.0 with optional adaptive γ.
+- `DeconvolutionParams.cs` — gain nullable `NoiseVariance` field (default null). Additive: all existing constructions `new DeconvolutionParams(K: 0.005f)` continue to compile.
+- `ConstrainedLeastSquaresDeconvolver.cs` — v2.0 with adaptive γ path when `p.NoiseVariance` is non-null.
 
 **Modified in `Deblur`:**
 - `MainWindow.xaml` — three "Estimate…" buttons + suggestion display panels.
