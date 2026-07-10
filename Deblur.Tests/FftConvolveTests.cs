@@ -29,21 +29,28 @@ public class FftConvolveTests
     [Fact]
     public void Convolve_UniformKernel_SmoothsInput()
     {
-        var input = MakeGradient(32, 32);
+        // Step-edge input, NOT a linear gradient — a linear ramp is a fixed point
+        // of a symmetric box filter. And we measure gradient ENERGY (sum of squared
+        // diffs), NOT sum of absolute diffs — the L1 norm of the gradient (total
+        // variation) is invariant under monotonic transforms including box-filter
+        // smoothing of a monotonic step, so it wouldn't shrink either. Energy
+        // (L2 norm of gradient) is what smoothing actually reduces.
+        var input = MakeStepEdge(32, 32);
         var box = new float[5, 5];
         for (int y = 0; y < 5; y++) for (int x = 0; x < 5; x++) box[y, x] = 1f / 25f;
         var result = FftConvolve.Convolve(input, 32, 32, box, BoundaryMode.Reflect);
-        // Smoothing reduces gradient magnitude in the interior.
-        double srcGrad = 0, resGrad = 0;
+        double srcEnergy = 0, resEnergy = 0;
         for (int y = 8; y < 24; y++)
             for (int x = 8; x < 23; x++)
             {
                 int i = y * 32 + x;
-                srcGrad += Math.Abs(input[i + 1] - input[i]);
-                resGrad += Math.Abs(result[i + 1] - result[i]);
+                double srcDiff = input[i + 1] - input[i];
+                double resDiff = result[i + 1] - result[i];
+                srcEnergy += srcDiff * srcDiff;
+                resEnergy += resDiff * resDiff;
             }
-        Assert.True(resGrad < srcGrad * 0.7,
-            $"box filter did not smooth: src {srcGrad:F3} → res {resGrad:F3}");
+        Assert.True(resEnergy < srcEnergy * 0.5,
+            $"box filter did not smooth: src {srcEnergy:F3} → res {resEnergy:F3}");
     }
 
     [Fact]
@@ -76,6 +83,15 @@ public class FftConvolveTests
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
                 b[y * w + x] = (float)(x + y) / (w + h - 2);
+        return b;
+    }
+
+    private static float[] MakeStepEdge(int w, int h)
+    {
+        var b = new float[w * h];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                b[y * w + x] = x < w / 2 ? 0.15f : 0.85f;
         return b;
     }
 }
