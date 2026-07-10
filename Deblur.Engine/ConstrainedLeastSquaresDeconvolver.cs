@@ -13,6 +13,9 @@ public sealed class ConstrainedLeastSquaresDeconvolver : FftDeconvolverBase
             "constraint. The regularization strength gamma is scaled by the ratio of the " +
             "Laplacian's average spectral energy to the PSF's average spectral energy so " +
             "that the K slider produces comparable regularization across different PSF sizes. " +
+            "Because of this normalization, K's effective magnitude is roughly two orders " +
+            "of magnitude larger than in Wiener/Tikhonov — the CLS K slider operates in the " +
+            "~1e-5 to 1e-3 range for comparable output quality, not the 1e-3 to 1e-1 range. " +
             "This is a pragmatic substitute for the classical CLS formulation, which chooses " +
             "gamma adaptively via the discrepancy principle. The classical adaptive gamma " +
             "requires independent noise-variance estimation and lands in a later phase; this " +
