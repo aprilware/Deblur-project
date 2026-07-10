@@ -132,12 +132,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _proxy = AreaResample.Box(full, pw, ph);
         _proxyScale = (float)pw / full.Width;
 
+        // Clear ROI selection BEFORE swapping PreviewBitmap so PreviewCanvas.OnSourceChanged
+        // does not paint a stale overlay against the newly-sized bitmap for one dispatcher tick.
+        SelectedRoi = null;
+        SelectedRoiOverlayRect = null;
         PreviewBitmap = ImageBufferInterop.NewCompatibleBitmap(pw, ph);
         _runner.SetProxy(_proxy);
         OnPropertyChanged(nameof(HasImage));
         _history.Clear();
-        SelectedRoi = null;
-        SelectedRoiOverlayRect = null;
         OnPropertyChanged(nameof(CanUndo));
         OnPropertyChanged(nameof(CanRedo));
         Reset();
@@ -186,7 +188,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (fw < 2 || fh < 2) return;
 
         SelectedRoi = new RegionOfInterest(fx, fy, fw, fh, RoiFeatherRadius);
-        SelectedRoiOverlayRect = new System.Windows.Rect(proxyX, proxyY, proxyW, proxyH);
+        // Round-trip the clamped full-res rect back into proxy space so the overlay
+        // shows exactly the region the runner will process — no visual drift when the
+        // user drags past the image edge.
+        SelectedRoiOverlayRect = new System.Windows.Rect(
+            fx * _proxyScale, fy * _proxyScale, fw * _proxyScale, fh * _proxyScale);
         InvalidateFullResCache();
     }
 

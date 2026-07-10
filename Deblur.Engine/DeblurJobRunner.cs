@@ -98,8 +98,12 @@ public sealed class DeblurJobRunner : IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(0.3);
             cancellationToken.ThrowIfCancellationRequested();
+            // Snapshot Roi once so a concurrent setter cannot cause a torn read between
+            // the null-check and the argument. Safe today (IsBusy serializes callers)
+            // but the invariant costs nothing to make structural.
+            var roi = Roi;
             ImageBuffer result;
-            if (Roi is null)
+            if (roi is null)
             {
                 result = IsNoOp(scaledParams) ? fullRes.Clone() : RunDeconvolve(fullRes, scaledParams);
             }
@@ -107,7 +111,7 @@ public sealed class DeblurJobRunner : IDisposable
             {
                 result = RoiProcessor.ApplyToRoi(
                     fullRes,
-                    Roi,
+                    roi,
                     psfRadius: EstimatePsfRadius(scaledParams),
                     deconvolve: extract => IsNoOp(scaledParams)
                         ? extract.Clone()
