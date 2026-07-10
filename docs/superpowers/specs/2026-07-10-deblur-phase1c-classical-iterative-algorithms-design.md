@@ -24,7 +24,7 @@ An examiner picks Richardson–Lucy, Constrained Least Squares, or Landweber fro
 
 - Hyper-Laplacian prior deconvolution (Krishnan–Fergus 2009) — Phase 1.c-2.
 - TV via Split-Bregman / ADMM — Phase 1.c-2. Existing Chambolle-based `TotalVariationDeconvolver` remains available.
-- User-tunable per-algorithm parameters (iteration count, damping factor, step size). Iteration counts are fixed at conservative defaults; algorithms that historically expose these knobs (RL iterations, Landweber τ) use fixed reasonable defaults for now. The `p.Smoothness` slider is ignored by RL and Landweber (label converter shows "n/a").
+- User-tunable per-algorithm parameters (iteration count, under-relaxation alpha, step size). Iteration counts are fixed at conservative defaults; algorithms that historically expose these knobs (RL iterations, Landweber τ) use fixed reasonable defaults for now. The `p.Smoothness` slider is ignored by RL and Landweber (label converter shows "n/a").
 - Adaptive λ via discrepancy principle for CLS — requires noise-variance estimation (Phase 1.d).
 - Blind deconvolution / PSF estimation — Phase 1.d, 1.e.
 - Fixing rolled-up Minor items from Phase 1.b's whole-branch review (integer-div feather edge case, ReleaseMouseCapture during dual capture).
@@ -57,7 +57,7 @@ public abstract class FftDeconvolverBase : IDeconvolver
 
 Refactor `WienerDeconvolver` and `TikhonovDeconvolver` to extend `FftDeconvolverBase`. Each becomes a small class: metadata + a `BuildFilterResponse` implementation. `WienerDeconvolver`'s override returns `conj(H) / (|H|² + K)`; `TikhonovDeconvolver`'s returns `conj(H) / (|H|² + K · |C|²)` where `|C|²` is the discrete-Laplacian frequency response (unchanged formula).
 
-**Behavior contract**: the refactor produces byte-identical results within `1e-6` numerical tolerance to the pre-refactor implementations. Regression tests carry this: PSNR-vs-reference of the refactored Wiener/Tikhonov output against the pre-refactor output should exceed 60 dB.
+**Behavior contract**: the refactor produces near-exact results — max absolute per-channel difference ≤ `1e-5` (equivalently PSNR ≥ 100 dB) against the pre-refactor implementations. Wider tolerances would silently accept ordering or grouping regressions in the FFT-base extraction. The regression tests carry this.
 
 ### 2. Extract `FftConvolve` helper
 
@@ -93,16 +93,16 @@ for k in [0, Iterations):
     Hx = FftConvolve.Convolve(x_k, psf, reflect)
     ratio = y / max(Hx, eps)          // per-pixel
     correction = FftConvolve.Correlate(ratio, psf, reflect)
-    x_{k+1} = x_k * correction         // per-pixel; damped variant applies damping factor
+    x_{k+1} = x_k * correction^Alpha   // per-pixel; Alpha ∈ (0,1] under-relaxes the update
 ```
 
-**Damped variant** (Lucy-Poisson): multiplies `correction` by `damped = correction^Damping` where `Damping = 0.5` by default. Reduces noise amplification without changing convergence behavior at edges. Fixed at 0.5.
+**Fractional-power under-relaxation** (NOT White 1994's damped RL): the multiplicative correction is raised to a fractional power `Alpha ∈ (0, 1)` before multiplication, i.e. `x_{k+1} = x_k · correction^Alpha`. This attenuates each iteration's magnitude to reduce noise amplification. It is a well-known simple under-relaxation of RL; it is **not** the same as White's damped RL (White 1994), which uses a residual-thresholded damping mask that leaves the recovery unchanged where the fit is already good and only damps where the residual is large. The current phase ships the under-relaxation variant because it is trivial to implement and forensic-usefully distinct from vanilla RL; White's damped variant is deferred to a future version bump. The `Metadata.DescriptionMarkdown` calls this out explicitly ("fractional-power under-relaxation, not White (1994) damped RL") so testimony descriptions match the code.
 
 **Biggs–Andrews acceleration**: applies momentum-style extrapolation between iterations. Optional; enabled by default.
 
-**Fixed hyperparameters**: `Iterations = 30`, `Damping = 0.5`, `Accelerate = true`. Chose these because they produce Hubble-quality results on standard deconvolution benchmarks without user tuning; Phase 2 or later can expose them as sliders.
+**Fixed hyperparameters**: `Iterations = 30`, `Alpha = 0.5`, `Accelerate = true`. These produce Hubble-quality results on standard deconvolution benchmarks without user tuning; Phase 2 or later can expose them as sliders.
 
-Metadata: `Id = "richardson-lucy"`, `Version = "1.0"`, citation to Richardson (1972) and Lucy (1974).
+Metadata: `Id = "richardson-lucy"`, `Version = "1.0"`, citation to Richardson (1972) and Lucy (1974). The under-relaxation citation is Biggs–Andrews (1997) for acceleration; the fractional-power under-relaxation itself is a common textbook variant with no single canonical citation.
 
 ### 4. Constrained Least Squares
 
@@ -187,18 +187,20 @@ The XAML shared-footer slider stays exactly as-is; only the label converter upda
 
 **New in `Deblur.Tests`:**
 - `FftConvolveTests.cs` — convolve/correlate round-trip; identity kernel is identity; correlate is the adjoint of convolve within numeric tolerance.
-- `RichardsonLucyDeconvolverTests.cs` — motion round-trip PSNR > 15 dB; convergence over iterations (PSNR increases monotonically); no NaN under extreme params.
-- `ConstrainedLeastSquaresDeconvolverTests.cs` — motion round-trip PSNR > 15 dB; K-normalization behavior (fixed K produces comparable smoothness across length-5 and length-15 motion PSFs); NaN safety.
-- `LandweberDeconvolverTests.cs` — motion round-trip PSNR > 15 dB; non-negativity holds after every iteration; NaN safety.
-- `FftDeconvolverRefactorRegressionTests.cs` — pre-refactor Wiener/Tikhonov results (via reference implementations captured inline) match post-refactor results within 60 dB PSNR.
+- `RichardsonLucyDeconvolverTests.cs` — **improvement criterion**: deblurred output's PSNR-vs-GT ≥ blurred input's PSNR-vs-GT + 3 dB on a Motion round-trip. Convergence tests: with acceleration **disabled**, PSNR-vs-GT must be non-decreasing across iterations (strict monotonic); with acceleration **enabled**, keep only the ordering `iter30 > iter5 > iter1` (accelerated variants can zigzag between adjacent iterations). No NaN under extreme params.
+- `ConstrainedLeastSquaresDeconvolverTests.cs` — improvement criterion (≥3 dB over blurred) on a Motion round-trip. K-normalization behavior: fixed K on a length-5 and length-15 motion PSF produces gradient-energy that scales less steeply with PSF size than bare Tikhonov does (see §4 acceptance criterion). NaN safety.
+- `LandweberDeconvolverTests.cs` — improvement criterion (≥3 dB over blurred) on a Motion round-trip. Non-negativity holds after every iteration. NaN safety.
+- `FftDeconvolverRefactorRegressionTests.cs` — pre-refactor Wiener/Tikhonov results (captured inline as reference outputs) match post-refactor within `1e-5` max absolute channel difference (equivalently PSNR ≥ 100 dB). Pure refactor of identical math must be near-exact — the wide tolerance would silently allow ordering or grouping regressions in the FFT-base extraction.
+
+**Identity-transform integrity check** for the improvement criterion: an identity transform (return input as output) MUST fail the ≥3 dB assertion on the blurred → deblurred round-trip. A helper test `IdentityTransform_FailsImprovementCriterion` runs the same synthetic blur → applies identity as "deconvolution" → asserts the assertion body correctly fails. Prevents a subtle test-methodology bug where the criterion accepts no-ops.
 
 ## Constraints
 
 - .NET 8. No new NuGet packages.
 - Existing 104 tests remain green. Test count target after 1.c: ~125.
-- `FftDeconvolverBase.Apply` behavior contract: refactored Wiener/Tikhonov output matches pre-refactor output within `1e-6` numerical tolerance (measured PSNR > 60 dB against a captured reference — the regression tests carry this).
+- `FftDeconvolverBase.Apply` behavior contract: refactored Wiener/Tikhonov output matches pre-refactor output within `1e-5` max absolute per-channel difference (equivalently PSNR ≥ 100 dB against a captured reference). Pure algebraic refactor of identical math must be near-exact; a wider tolerance would silently accept ordering or grouping regressions in the FFT-base extraction.
 - Every new algorithm's `Metadata.DescriptionMarkdown > 100 chars`, `LiteratureCitation > 20 chars` — same standard as Phase 1.b.
-- Fixed hyperparameters for RL (iterations=30, damping=0.5, accelerate=true) and Landweber (iterations=100, step=1.0). No UI slider for these in this phase.
+- Fixed hyperparameters for RL (iterations=30, alpha=0.5, accelerate=true) and Landweber (iterations=100, step=0.9). No UI slider for these in this phase.
 - `p.Smoothness` slider ignored by RL and Landweber. Label reads "Iterations (fixed)". Not disabled visually — the label swap is the whole UX change.
 - Phase 1.c branches from tag `phase1b` onto `phase1c-classical-iterative-algorithms` (branch already created).
 
@@ -210,7 +212,7 @@ Unit + regression tests as listed above. Key correctness properties the tests lo
 - **RL convergence** — under noise-free synthetic blur, RL PSNR against ground truth increases monotonically for the first ~20 iterations, plateaus after. Test asserts iteration 30 > iteration 5 > iteration 1.
 - **CLS normalization** — for two motion PSFs of length 5 and 15, applying the same K yields output whose gradient-energy ratio matches the ratio Tikhonov would produce with K scaled by the PSF-energy ratio. (Not testing exact values — testing that the normalization behavior is present and directionally correct.)
 - **Landweber non-negativity** — after every iteration, `min(x) >= 0`. Test uses a stub PSF and asserts the invariant for iterations 1, 10, 50, 100.
-- **Refactor regression** — Wiener and Tikhonov output before and after the FFT-base refactor match within 60 dB PSNR. The `FftDeconvolverRefactorRegressionTests` captures the pre-refactor output inline as expected values, so future edits to the base can't silently regress the algorithm math.
+- **Refactor regression** — Wiener and Tikhonov output before and after the FFT-base refactor match within `1e-5` max absolute per-channel difference (equivalently PSNR ≥ 100 dB). `FftDeconvolverRefactorRegressionTests` captures the pre-refactor output inline as expected values, so future edits to the base can't silently regress the algorithm math.
 
 Manual smoke:
 - Algorithm dropdown gains three new options: Richardson–Lucy, Constrained Least Squares, Landweber.
