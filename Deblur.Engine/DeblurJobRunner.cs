@@ -105,7 +105,7 @@ public sealed class DeblurJobRunner : IDisposable
             ImageBuffer result;
             if (roi is null)
             {
-                result = IsNoOp(scaledParams) ? fullRes.Clone() : RunDeconvolve(fullRes, scaledParams);
+                result = IsNoOp(scaledParams) ? fullRes.Clone() : RunDeconvolve(fullRes, scaledParams, cancellationToken);
             }
             else
             {
@@ -115,7 +115,7 @@ public sealed class DeblurJobRunner : IDisposable
                     psfRadius: EstimatePsfRadius(scaledParams),
                     deconvolve: extract => IsNoOp(scaledParams)
                         ? extract.Clone()
-                        : RunDeconvolve(extract, scaledParams));
+                        : RunDeconvolve(extract, scaledParams, cancellationToken));
             }
             progress?.Report(1.0);
             return result;
@@ -143,12 +143,16 @@ public sealed class DeblurJobRunner : IDisposable
     /// <see cref="_options"/>. Order: sRGB -> linear -> YCbCr -> deconvolve Y -> recompose to
     /// linear RGB -> sRGB.
     /// </summary>
-    private ImageBuffer RunDeconvolve(ImageBuffer input, KernelParams p)
+    private ImageBuffer RunDeconvolve(ImageBuffer input, KernelParams p, CancellationToken cancellationToken = default)
     {
+        // Thread the CancellationToken into options so iterative deconvolvers
+        // (Richardson-Lucy, Landweber) can check it every iteration. Frequency-domain
+        // deconvolvers ignore it — they finish in one shot.
+        var options = _options with { CancellationToken = cancellationToken };
         var psf = _kernels[p.Type].Build(p);
         var deconvIn = input;
 
-        if (_options.LinearLight)
+        if (options.LinearLight)
         {
             deconvIn = input.Clone();
             Deblur.Engine.Color.SrgbLinear.ToLinearInPlace(deconvIn.R);
@@ -157,20 +161,20 @@ public sealed class DeblurJobRunner : IDisposable
         }
 
         ImageBuffer result;
-        if (_options.LuminanceOnly)
+        if (options.LuminanceOnly)
         {
             var (y, cb, cr) = Deblur.Engine.Color.YCbCr.FromRgb(deconvIn.R, deconvIn.G, deconvIn.B);
             var yBuf = new ImageBuffer(deconvIn.Width, deconvIn.Height, y, (float[])y.Clone(), (float[])y.Clone());
-            var deconvY = _deconvolvers[p.Algorithm].Apply(yBuf, psf, new DeconvolutionParams(K: p.Smoothness), _options);
+            var deconvY = _deconvolvers[p.Algorithm].Apply(yBuf, psf, new DeconvolutionParams(K: p.Smoothness), options);
             var (r, g, b) = Deblur.Engine.Color.YCbCr.ToRgb(deconvY.R, cb, cr);
             result = new ImageBuffer(deconvIn.Width, deconvIn.Height, r, g, b);
         }
         else
         {
-            result = _deconvolvers[p.Algorithm].Apply(deconvIn, psf, new DeconvolutionParams(K: p.Smoothness), _options);
+            result = _deconvolvers[p.Algorithm].Apply(deconvIn, psf, new DeconvolutionParams(K: p.Smoothness), options);
         }
 
-        if (_options.LinearLight)
+        if (options.LinearLight)
         {
             // Encode result back to sRGB; result may share arrays with deconvIn — clone to be safe.
             var enc = new ImageBuffer(result.Width, result.Height,

@@ -36,15 +36,15 @@ public sealed class RichardsonLucyDeconvolver : IDeconvolver
 
     public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p, PipelineOptions? options = null)
     {
-        _ = options ?? PipelineOptions.Default; // options currently unused inside RL
+        var opt = options ?? PipelineOptions.Default;
         int w = input.Width, h = input.Height;
         return new ImageBuffer(w, h,
-            ProcessChannel(input.R, w, h, psf),
-            ProcessChannel(input.G, w, h, psf),
-            ProcessChannel(input.B, w, h, psf));
+            ProcessChannel(input.R, w, h, psf, opt.CancellationToken),
+            ProcessChannel(input.G, w, h, psf, opt.CancellationToken),
+            ProcessChannel(input.B, w, h, psf, opt.CancellationToken));
     }
 
-    private float[] ProcessChannel(float[] y, int w, int h, float[,] psf)
+    private float[] ProcessChannel(float[] y, int w, int h, float[,] psf, CancellationToken cancellationToken)
     {
         int n = y.Length;
         var x = (float[])y.Clone();
@@ -53,6 +53,7 @@ public sealed class RichardsonLucyDeconvolver : IDeconvolver
 
         for (int k = 0; k < _iterations; k++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             // Biggs-Andrews extrapolation for k >= 2.
             // beta = <x_k - x_{k-1}, x_{k-1} - x_{k-2}> / <x_{k-1} - x_{k-2}, x_{k-1} - x_{k-2}>
             // Requires tracking two iterations back (xPrevPrev), not just one.

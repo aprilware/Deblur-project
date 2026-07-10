@@ -22,7 +22,11 @@ public sealed class LandweberDeconvolver : IDeconvolver
             "Landweber, L. (1951). An iteration formula for Fredholm integral equations of " +
             "the first kind. American Journal of Mathematics 73(3), 615-624.");
 
-    public LandweberDeconvolver(int iterations = 100, float step = 0.9f)
+    // Default 30 iterations (down from 100) — 100 iters on a full-res 4K image
+    // means 600 FFTs and blocks the render for tens of seconds. 30 iters still
+    // clears the 3 dB improvement bar and finishes in a few seconds on typical
+    // full-res inputs. Higher counts remain available via the constructor.
+    public LandweberDeconvolver(int iterations = 30, float step = 0.9f)
     {
         if (iterations < 1) throw new ArgumentOutOfRangeException(nameof(iterations));
         if (step <= 0f || step >= 2f) throw new ArgumentOutOfRangeException(nameof(step));
@@ -32,20 +36,21 @@ public sealed class LandweberDeconvolver : IDeconvolver
 
     public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p, PipelineOptions? options = null)
     {
-        _ = options ?? PipelineOptions.Default;
+        var opt = options ?? PipelineOptions.Default;
         int w = input.Width, h = input.Height;
         return new ImageBuffer(w, h,
-            ProcessChannel(input.R, w, h, psf),
-            ProcessChannel(input.G, w, h, psf),
-            ProcessChannel(input.B, w, h, psf));
+            ProcessChannel(input.R, w, h, psf, opt.CancellationToken),
+            ProcessChannel(input.G, w, h, psf, opt.CancellationToken),
+            ProcessChannel(input.B, w, h, psf, opt.CancellationToken));
     }
 
-    private float[] ProcessChannel(float[] y, int w, int h, float[,] psf)
+    private float[] ProcessChannel(float[] y, int w, int h, float[,] psf, CancellationToken cancellationToken)
     {
         int n = y.Length;
         var x = (float[])y.Clone();
         for (int k = 0; k < _iterations; k++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var Hx = FftConvolve.Convolve(x, w, h, psf, BoundaryMode.Reflect);
             var residual = new float[n];
             for (int i = 0; i < n; i++) residual[i] = y[i] - Hx[i];
