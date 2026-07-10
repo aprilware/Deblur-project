@@ -34,8 +34,14 @@ public class LandweberDeconvolverTests
         Assert.False(Quality.Psnr(gt, identity) >= Quality.Psnr(gt, blurred) + 3.0);
     }
 
+    // Renamed from `HoldsAfterEveryIteration` — the test samples terminal
+    // state at fixed iteration counts, and the final Math.Clamp(0,1) at
+    // Landweber's exit means removing the in-loop non-negativity projection
+    // would NOT fail this test. Proper mid-iteration coverage requires an
+    // instrumented callback; deferred to Phase 1.d. This assertion still
+    // proves the terminal invariant across a representative iteration range.
     [Fact]
-    public void NonNegativity_HoldsAfterEveryIteration()
+    public void NonNegativity_HoldsAtSampledIterations()
     {
         var input = SyntheticImages.Checkerboard(64, 64, 8);
         var psf = new MotionBlurKernel().Build(
