@@ -7,4 +7,5 @@ public enum AlgorithmType
     TotalVariation,
     RichardsonLucy,
     ConstrainedLeastSquares,
+    Landweber,
 }
