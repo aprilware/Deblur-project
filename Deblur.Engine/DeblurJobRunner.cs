@@ -211,7 +211,15 @@ public sealed class DeblurJobRunner : IDisposable
                     _pending = null;
                 }
 
-                ImageBuffer deconv = IsNoOp(p) ? proxy : RunDeconvolve(proxy, p);
+                // Iterative algorithms (Richardson-Lucy: 30 iters × 2 FFTs × 3 channels,
+                // Landweber: 100 × 2 × 3) take seconds per invocation. Running them on
+                // the live-preview WorkerLoop means every slider tick queues another
+                // multi-second job and the worker never drains; the UI's IsPreviewComputing
+                // flag stays lit and the app appears hung. Skip them in preview — show the
+                // raw proxy — and let the user see the actual iterative result on
+                // full-render (Save-As / press-Render), where the delay is expected.
+                bool isIterativePreview = p.Algorithm is AlgorithmType.RichardsonLucy or AlgorithmType.Landweber;
+                ImageBuffer deconv = (IsNoOp(p) || isIterativePreview) ? proxy : RunDeconvolve(proxy, p);
 
                 int w = deconv.Width, h = deconv.Height;
                 var bgra = new byte[w * h * 4];
