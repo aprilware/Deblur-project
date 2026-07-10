@@ -33,6 +33,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string? _statusMessage;
     [ObservableProperty] private WriteableBitmap? _previewBitmap;
     [ObservableProperty] private bool _isPreviewComputing;
+    [ObservableProperty] private bool _roiEnabled;
+    [ObservableProperty] private int _roiFeatherRadius = 12;
+    [ObservableProperty] private RegionOfInterest? _selectedRoi;
+    [ObservableProperty] private System.Windows.Rect? _selectedRoiOverlayRect;
 
     public bool IsMotionSelected     => SelectedBlurType == BlurType.Motion;
     public bool IsOutOfFocusSelected => SelectedBlurType == BlurType.OutOfFocus;
@@ -128,6 +132,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _proxy = AreaResample.Box(full, pw, ph);
         _proxyScale = (float)pw / full.Width;
 
+        // Clear ROI selection BEFORE swapping PreviewBitmap so PreviewCanvas.OnSourceChanged
+        // does not paint a stale overlay against the newly-sized bitmap for one dispatcher tick.
+        SelectedRoi = null;
+        SelectedRoiOverlayRect = null;
         PreviewBitmap = ImageBufferInterop.NewCompatibleBitmap(pw, ph);
         _runner.SetProxy(_proxy);
         OnPropertyChanged(nameof(HasImage));
@@ -160,6 +168,33 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnLengthChanged(float value)     { InvalidateFullResCache(); PushCurrentParams(); }
     partial void OnRadiusChanged(float value)     { InvalidateFullResCache(); PushCurrentParams(); }
     partial void OnSigmaChanged(float value)      { InvalidateFullResCache(); PushCurrentParams(); }
+    partial void OnRoiEnabledChanged(bool value) => InvalidateFullResCache();
+    partial void OnRoiFeatherRadiusChanged(int value) => InvalidateFullResCache();
+
+    public void CommitRoi(int proxyX, int proxyY, int proxyW, int proxyH)
+    {
+        if (_originalFullRes is null) return;
+        // Proxy → full-res: multiply by 1/_proxyScale (same convention as Length/Radius/Sigma).
+        float inv = 1f / Math.Max(_proxyScale, 1e-6f);
+        int fx = (int)Math.Round(proxyX * inv);
+        int fy = (int)Math.Round(proxyY * inv);
+        int fw = (int)Math.Round(proxyW * inv);
+        int fh = (int)Math.Round(proxyH * inv);
+        // Clamp to image bounds.
+        fx = Math.Clamp(fx, 0, _originalFullRes.Width - 1);
+        fy = Math.Clamp(fy, 0, _originalFullRes.Height - 1);
+        fw = Math.Min(fw, _originalFullRes.Width - fx);
+        fh = Math.Min(fh, _originalFullRes.Height - fy);
+        if (fw < 2 || fh < 2) return;
+
+        SelectedRoi = new RegionOfInterest(fx, fy, fw, fh, RoiFeatherRadius);
+        // Round-trip the clamped full-res rect back into proxy space so the overlay
+        // shows exactly the region the runner will process — no visual drift when the
+        // user drags past the image edge.
+        SelectedRoiOverlayRect = new System.Windows.Rect(
+            fx * _proxyScale, fy * _proxyScale, fw * _proxyScale, fh * _proxyScale);
+        InvalidateFullResCache();
+    }
 
     public void Reset()
     {
@@ -195,6 +230,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             progress.Report(1.0);
             return;
         }
+        _runner.Roi = (RoiEnabled && SelectedRoi is { } r)
+            ? r with { FeatherRadius = RoiFeatherRadius }
+            : null;
         _fullResBuffer = await _runner.RenderFullAsync(_originalFullRes, current, _proxyScale, progress, cancellationToken);
         _fullResParams = current;
     }

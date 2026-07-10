@@ -4,6 +4,21 @@ namespace Deblur.Engine;
 
 public sealed class WienerDeconvolver : IDeconvolver
 {
+    public AlgorithmMetadata Metadata { get; } = new(
+        Id: "wiener",
+        Version: "1.0",
+        DisplayName: "Wiener filter",
+        DescriptionMarkdown:
+            "The Wiener filter is a linear frequency-domain deconvolver that " +
+            "minimizes the expected squared error between the estimated and true image, " +
+            "assuming known point spread function (PSF) and a scalar noise-to-signal " +
+            "ratio parameter K. The filter response is conj(H) / (|H|^2 + K), where " +
+            "H is the PSF's Fourier transform. Increasing K suppresses noise " +
+            "amplification at the cost of retained blur.",
+        LiteratureCitation:
+            "Wiener, N. (1949). Extrapolation, Interpolation, and Smoothing of " +
+            "Stationary Time Series. MIT Press / Wiley.");
+
     public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p, PipelineOptions? options = null)
     {
         var opt = options ?? PipelineOptions.Default;

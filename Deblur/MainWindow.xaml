@@ -72,7 +72,10 @@
                                         Source="{Binding PreviewBitmap}"
                                         IsArrowEnabled="{Binding IsMotionSelected}"
                                         Dragging="OnPreviewDragging"
-                                        DragCommitted="OnPreviewDragCommitted"/>
+                                        DragCommitted="OnPreviewDragCommitted"
+                                        RoiModeEnabled="{Binding RoiEnabled}"
+                                        SelectedRoiRect="{Binding SelectedRoiOverlayRect, Mode=OneWay}"
+                                        RoiDrawn="PreviewCanvas_RoiDrawn"/>
 
                 <StackPanel Grid.Column="1" Margin="12">
                     <TextBlock Text="Blur type" FontWeight="Bold" Margin="0,0,0,4"/>
@@ -115,6 +118,21 @@
                         <TextBlock Text="{Binding SelectedAlgorithm, Converter={StaticResource AlgLabel}}" Margin="0,4,0,0"/>
                         <Slider Minimum="0.0001" Maximum="0.1" SmallChange="0.0005" Value="{Binding Smoothness}"/>
                         <TextBlock Text="{Binding Smoothness, StringFormat={}{0:0.0000}}" HorizontalAlignment="Right"/>
+
+                        <CheckBox Content="Deblur selected region"
+                                  IsChecked="{Binding RoiEnabled}"
+                                  Margin="0,12,0,4"/>
+                        <TextBlock Text="Feather radius"
+                                   Margin="0,4,0,0"
+                                   IsEnabled="{Binding RoiEnabled}"/>
+                        <Slider Minimum="0" Maximum="64"
+                                Value="{Binding RoiFeatherRadius}"
+                                TickFrequency="4"
+                                IsSnapToTickEnabled="True"
+                                IsEnabled="{Binding RoiEnabled}"/>
+                        <TextBlock Text="{Binding RoiFeatherRadius, StringFormat={}{0} px}"
+                                   Margin="0,0,0,4"
+                                   IsEnabled="{Binding RoiEnabled}"/>
 
                         <Button Content="Reset" Margin="0,12,0,0" Command="{x:Static local:AppCommands.Reset}"/>
                         <Button Content="Render full resolution" Margin="0,8,0,0" Command="{x:Static local:AppCommands.RenderFull}"/>

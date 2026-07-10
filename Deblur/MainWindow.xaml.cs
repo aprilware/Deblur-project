@@ -147,6 +147,12 @@ public partial class MainWindow : Window
     private void OnPreviewDragCommitted(object? sender, ArrowDragEventArgs e)
         => Vm.CommitArrowDrag(e.Angle, e.Length);
 
+    private void PreviewCanvas_RoiDrawn(object sender, RoiDrawnEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+            vm.CommitRoi(e.X, e.Y, e.Width, e.Height);
+    }
+
     private void OnFileDragEnter(object sender, DragEventArgs e)
     {
         e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;

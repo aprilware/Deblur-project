@@ -9,6 +9,10 @@ public class DeblurJobRunnerTests
 {
     private sealed class SlowStubDeconvolver : IDeconvolver
     {
+        public AlgorithmMetadata Metadata { get; } = new(
+            Id: "stub", Version: "0", DisplayName: "Stub", DescriptionMarkdown: "test-only stub",
+            LiteratureCitation: "n/a");
+
         public int CallCount;
         public readonly ConcurrentBag<float> ObservedAngles = new();
         public int SleepMs { get; init; } = 10;
@@ -29,6 +33,10 @@ public class DeblurJobRunnerTests
 
     private sealed class RecordingStubDeconvolver : IDeconvolver
     {
+        public AlgorithmMetadata Metadata { get; } = new(
+            Id: "stub", Version: "0", DisplayName: "Stub", DescriptionMarkdown: "test-only stub",
+            LiteratureCitation: "n/a");
+
         public readonly System.Collections.Concurrent.ConcurrentBag<KernelParams> Applied = new();
         public int SleepMs { get; init; } = 0;
 
@@ -350,6 +358,10 @@ public class DeblurJobRunnerTests
     // 8-bit after any non-noop deconvolution.
     private sealed class FreshBufferStubDeconvolver : IDeconvolver
     {
+        public AlgorithmMetadata Metadata { get; } = new(
+            Id: "stub", Version: "0", DisplayName: "Stub", DescriptionMarkdown: "test-only stub",
+            LiteratureCitation: "n/a");
+
         public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p, PipelineOptions? options = null)
             => new ImageBuffer(input.Width, input.Height,
                 (float[])input.R.Clone(), (float[])input.G.Clone(), (float[])input.B.Clone());

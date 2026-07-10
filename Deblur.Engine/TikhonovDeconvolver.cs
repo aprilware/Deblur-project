@@ -4,6 +4,20 @@ namespace Deblur.Engine;
 
 public sealed class TikhonovDeconvolver : IDeconvolver
 {
+    public AlgorithmMetadata Metadata { get; } = new(
+        Id: "tikhonov-laplacian",
+        Version: "1.0",
+        DisplayName: "Tikhonov regularization (Laplacian)",
+        DescriptionMarkdown:
+            "Tikhonov regularization adds a smoothness penalty to the deconvolution " +
+            "objective: minimize ||H*x - y||^2 + K * ||C*x||^2, where C is the discrete " +
+            "5-point Laplacian operator. The closed-form frequency-domain solution is " +
+            "conj(H) / (|H|^2 + K * |C|^2). K controls the trade-off between fit and " +
+            "smoothness; larger K produces smoother, less noise-amplifying reconstructions.",
+        LiteratureCitation:
+            "Tikhonov, A. N. (1963). Solution of incorrectly formulated problems and " +
+            "the regularization method. Dokl. Akad. Nauk SSSR, 151, 501-504.");
+
     public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p, PipelineOptions? options = null)
     {
         var opt = options ?? PipelineOptions.Default;
