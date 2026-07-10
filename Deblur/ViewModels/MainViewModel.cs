@@ -58,9 +58,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         };
         var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
         {
-            [AlgorithmType.Wiener]         = new WienerDeconvolver(),
-            [AlgorithmType.Tikhonov]       = new TikhonovDeconvolver(),
-            [AlgorithmType.TotalVariation] = new TotalVariationDeconvolver(),
+            [AlgorithmType.Wiener]                = new WienerDeconvolver(),
+            [AlgorithmType.Tikhonov]              = new TikhonovDeconvolver(),
+            [AlgorithmType.TotalVariation]        = new TotalVariationDeconvolver(),
+            [AlgorithmType.RichardsonLucy]        = new RichardsonLucyDeconvolver(),
+            [AlgorithmType.ConstrainedLeastSquares] = new ConstrainedLeastSquaresDeconvolver(),
+            [AlgorithmType.Landweber]             = new LandweberDeconvolver(),
         };
         _runner = new DeblurJobRunner(kernels, deconvolvers, PipelineOptions.Default);
         _runner.ProxyReady += OnProxyReady;
