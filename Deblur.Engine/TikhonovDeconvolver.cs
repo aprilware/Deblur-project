@@ -2,9 +2,9 @@ using System.Numerics;
 
 namespace Deblur.Engine;
 
-public sealed class TikhonovDeconvolver : IDeconvolver
+public sealed class TikhonovDeconvolver : FftDeconvolverBase
 {
-    public AlgorithmMetadata Metadata { get; } = new(
+    public override AlgorithmMetadata Metadata { get; } = new(
         Id: "tikhonov-laplacian",
         Version: "1.0",
         DisplayName: "Tikhonov regularization (Laplacian)",
@@ -18,32 +18,9 @@ public sealed class TikhonovDeconvolver : IDeconvolver
             "Tikhonov, A. N. (1963). Solution of incorrectly formulated problems and " +
             "the regularization method. Dokl. Akad. Nauk SSSR, 151, 501-504.");
 
-    public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p, PipelineOptions? options = null)
+    protected override Complex[,] BuildFilterResponse(Complex[,] H, DeconvolutionParams p, int fftSize)
     {
-        var opt = options ?? PipelineOptions.Default;
-        int psfH = psf.GetLength(0);
-        int psfW = psf.GetLength(1);
-        int pad = Math.Max(psfW, psfH) / 2 + 1;
-
-        int paddedW = input.Width + 2 * pad;
-        int paddedH = input.Height + 2 * pad;
-        int fftSize = FftAdapter.NextPow2(Math.Max(paddedW, paddedH));
-
-        // Build centered PSF in an fftSize x fftSize buffer with DC at (0,0).
-        var psfBuf = new float[fftSize, fftSize];
-        int cy = psfH / 2, cx = psfW / 2;
-        for (int y = 0; y < psfH; y++)
-            for (int x = 0; x < psfW; x++)
-            {
-                int dy = (y - cy + fftSize) % fftSize;
-                int dx = (x - cx + fftSize) % fftSize;
-                psfBuf[dy, dx] = psf[y, x];
-            }
-        var H = FftAdapter.Forward2D(psfBuf);
-
-        // Precompute Tikhonov numerator: conj(H) / (|H|^2 + lambda*|C|^2),
-        // where |C(u,v)|^2 = (Cu + Cv)^2 for the discrete 5-point Laplacian.
-        var tikhonovNumer = new Complex[fftSize, fftSize];
+        var filter = new Complex[fftSize, fftSize];
         for (int y = 0; y < fftSize; y++)
         {
             double Cv = 2.0 - 2.0 * Math.Cos(2.0 * Math.PI * y / fftSize);
@@ -53,40 +30,9 @@ public sealed class TikhonovDeconvolver : IDeconvolver
                 double cSq = (Cu + Cv) * (Cu + Cv);
                 var h = H[y, x];
                 double mag2 = h.Real * h.Real + h.Imaginary * h.Imaginary;
-                tikhonovNumer[y, x] = Complex.Conjugate(h) / (mag2 + p.K * cSq);
+                filter[y, x] = Complex.Conjugate(h) / (mag2 + p.K * cSq);
             }
         }
-
-        float[] outR = ProcessChannel(input.R, input.Width, input.Height, pad, fftSize, tikhonovNumer, opt);
-        float[] outG = ProcessChannel(input.G, input.Width, input.Height, pad, fftSize, tikhonovNumer, opt);
-        float[] outB = ProcessChannel(input.B, input.Width, input.Height, pad, fftSize, tikhonovNumer, opt);
-        return new ImageBuffer(input.Width, input.Height, outR, outG, outB);
-    }
-
-    private static float[] ProcessChannel(
-        float[] channel, int w, int h, int pad, int fftSize, Complex[,] tikhonovNumer, PipelineOptions opt)
-    {
-        var padded = BoundaryFill.Pad(channel, w, h, pad, fftSize, opt.BoundaryMode);
-        if (opt.EdgeTaper) EdgeTaper.ApplyInPlace(padded, pad);
-
-        var G = FftAdapter.Forward2D(padded);
-        var Fhat = new Complex[fftSize, fftSize];
-        for (int y = 0; y < fftSize; y++)
-            for (int x = 0; x < fftSize; x++)
-                Fhat[y, x] = tikhonovNumer[y, x] * G[y, x];
-
-        var real = FftAdapter.Inverse2DReal(Fhat);
-
-        var result = new float[w * h];
-        for (int y = 0; y < h; y++)
-        {
-            for (int x = 0; x < w; x++)
-            {
-                float v = real[y + pad, x + pad];
-                if (!float.IsFinite(v)) v = 0f;
-                result[y * w + x] = Math.Clamp(v, 0f, 1f);
-            }
-        }
-        return result;
+        return filter;
     }
 }
