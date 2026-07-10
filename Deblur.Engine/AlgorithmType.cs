@@ -6,4 +6,5 @@ public enum AlgorithmType
     Tikhonov,
     TotalVariation,
     RichardsonLucy,
+    ConstrainedLeastSquares,
 }
