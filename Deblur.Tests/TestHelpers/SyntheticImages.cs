@@ -4,6 +4,27 @@ namespace Deblur.Tests.TestHelpers;
 
 public static class SyntheticImages
 {
+    /// <summary>
+    /// A non-periodic textured image — pure white-noise pattern with a spectrally
+    /// flat characteristic. Use this (not Checkerboard) as ground truth for tests
+    /// that inspect the cepstrum or spectrum for injected periodicities: periodic
+    /// patterns like the checkerboard produce their own strong cepstral/spectral
+    /// peaks that can dominate whatever the test is trying to measure. White noise
+    /// gives an injected motion blur or defocus a clean canvas to plant its
+    /// characteristic spectral signature on.
+    /// </summary>
+    public static ImageBuffer TexturedNoise(int width, int height, int seed)
+    {
+        var rng = new Random(seed);
+        var buf = new ImageBuffer(width, height);
+        for (int i = 0; i < buf.PixelCount; i++)
+        {
+            float v = (float)rng.NextDouble();
+            buf.R[i] = v; buf.G[i] = v; buf.B[i] = v;
+        }
+        return buf;
+    }
+
     public static ImageBuffer Checkerboard(int width, int height, int cellSize)
     {
         var buf = new ImageBuffer(width, height);

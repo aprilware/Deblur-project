@@ -15,7 +15,11 @@ public class CepstralMotionEstimatorTests
     [InlineData(90f, 8f)]
     public void RecoversMotionAngleAndLength_WithinTolerance(float trueAngle, float trueLength)
     {
-        var gt = SyntheticImages.Checkerboard(256, 256, 16);
+        // TexturedNoise (broadband, non-periodic) instead of Checkerboard: a
+        // 16-px checkerboard produces a strong self-cepstrum peak at quefrency
+        // 16 that dominates any motion-blur peak we can inject, making the
+        // estimator's output test-artifact-driven rather than motion-driven.
+        var gt = SyntheticImages.TexturedNoise(256, 256, seed: 42);
         var psf = new MotionBlurKernel().Build(
             new KernelParams(BlurType.Motion, trueAngle, trueLength, 0f, 0f, 0f, AlgorithmType.Wiener));
         var blurred = SyntheticBlur.Apply(gt, psf, gaussianNoiseSigma: 0f, seed: 42);
@@ -38,7 +42,11 @@ public class CepstralMotionEstimatorTests
     [Fact]
     public void SharpImage_LowConfidence()
     {
-        var gt = SyntheticImages.Checkerboard(256, 256, 16);
+        // TexturedNoise (broadband, non-periodic) instead of Checkerboard: a
+        // 16-px checkerboard produces a strong self-cepstrum peak at quefrency
+        // 16 that dominates any motion-blur peak we can inject, making the
+        // estimator's output test-artifact-driven rather than motion-driven.
+        var gt = SyntheticImages.TexturedNoise(256, 256, seed: 42);
         var gray = ToGrayscale(gt);
         var est = CepstralMotionEstimator.Estimate(gray, gt.Width, gt.Height);
         Assert.True(est.Confidence < 0.5f, $"expected low confidence on sharp image, got {est.Confidence}");
