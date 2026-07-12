@@ -5,22 +5,50 @@ namespace Deblur.Tests.TestHelpers;
 public static class SyntheticImages
 {
     /// <summary>
-    /// A non-periodic textured image — pure white-noise pattern with a spectrally
-    /// flat characteristic. Use this (not Checkerboard) as ground truth for tests
+    /// A non-periodic textured image — pure white-noise pattern, optionally smoothed
+    /// with N 3×3 box passes. Use this (not Checkerboard) as ground truth for tests
     /// that inspect the cepstrum or spectrum for injected periodicities: periodic
     /// patterns like the checkerboard produce their own strong cepstral/spectral
-    /// peaks that can dominate whatever the test is trying to measure. White noise
-    /// gives an injected motion blur or defocus a clean canvas to plant its
-    /// characteristic spectral signature on.
+    /// peaks that can dominate whatever the test is trying to measure.
+    ///
+    /// smoothPasses = 0 (default): pure white noise — spectrally flat, ideal for
+    /// cepstral peak-detection tests where the cepstrum should be near-zero except
+    /// where injected structure places a peak.
+    ///
+    /// smoothPasses > 0: lightly low-pass filtered — reduces the per-bin variance
+    /// of pure white noise, giving Radon-style spectrum-line-integration tests a
+    /// smoother angular profile. Still broadband, still non-periodic.
     /// </summary>
-    public static ImageBuffer TexturedNoise(int width, int height, int seed)
+    public static ImageBuffer TexturedNoise(int width, int height, int seed, int smoothPasses = 0)
     {
         var rng = new Random(seed);
-        var buf = new ImageBuffer(width, height);
-        for (int i = 0; i < buf.PixelCount; i++)
+        var raw = new float[width * height];
+        for (int i = 0; i < raw.Length; i++) raw[i] = (float)rng.NextDouble();
+
+        var smoothed = new float[width * height];
+        for (int pass = 0; pass < smoothPasses; pass++)
         {
-            float v = (float)rng.NextDouble();
-            buf.R[i] = v; buf.G[i] = v; buf.B[i] = v;
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    float sum = 0f; int count = 0;
+                    for (int dy = -1; dy <= 1; dy++)
+                        for (int dx = -1; dx <= 1; dx++)
+                        {
+                            int sy = Math.Clamp(y + dy, 0, height - 1);
+                            int sx = Math.Clamp(x + dx, 0, width - 1);
+                            sum += raw[sy * width + sx];
+                            count++;
+                        }
+                    smoothed[y * width + x] = sum / count;
+                }
+            (raw, smoothed) = (smoothed, raw);
+        }
+
+        var buf = new ImageBuffer(width, height);
+        for (int i = 0; i < raw.Length; i++)
+        {
+            buf.R[i] = raw[i]; buf.G[i] = raw[i]; buf.B[i] = raw[i];
         }
         return buf;
     }
