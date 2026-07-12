@@ -3,11 +3,22 @@ using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Deblur.Engine;
+using Deblur.Engine.Estimation;
 using Deblur.Engine.Imaging;
 using Deblur.Services;
 
 namespace Deblur.ViewModels;
+
+/// <summary>Snapshot of a motion-blur suggestion surfaced from <see cref="CepstralMotionEstimator"/>.</summary>
+public sealed record MotionSuggestion(float Angle, float Length, float Confidence);
+
+/// <summary>Snapshot of a defocus-radius suggestion surfaced from <see cref="DefocusRadiusEstimator"/>.</summary>
+public sealed record DefocusSuggestion(float Radius, float Confidence);
+
+/// <summary>Snapshot of a noise suggestion surfaced from <see cref="WaveletNoiseEstimator"/>.</summary>
+public sealed record NoiseSuggestionVm(float SigmaNoise, float SuggestedK, float Confidence);
 
 public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
@@ -37,6 +48,21 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private int _roiFeatherRadius = 12;
     [ObservableProperty] private RegionOfInterest? _selectedRoi;
     [ObservableProperty] private System.Windows.Rect? _selectedRoiOverlayRect;
+    [ObservableProperty] private MotionSuggestion? _motionSuggestion;
+    [ObservableProperty] private DefocusSuggestion? _defocusSuggestion;
+    [ObservableProperty] private NoiseSuggestionVm? _noiseSuggestion;
+
+    // Wavelet-noise-estimator's accepted sigma^2, threaded into KernelParams.NoiseVariance
+    // for CLS v2's discrepancy-principle gamma bisection. Null until the examiner accepts
+    // a noise suggestion; reset to null on every new image load.
+    private float? _acceptedNoiseVariance;
+
+    /// <summary>
+    /// In-memory audit trail of every estimator invocation and its accept/dismiss outcome.
+    /// Not an [ObservableProperty] — it's a read-only list from XAML's perspective; the UI
+    /// re-reads it after each Estimate/Accept/Dismiss call rather than binding to mutations.
+    /// </summary>
+    public List<SuggestionRecord> SuggestionHistory { get; } = new();
 
     public bool IsMotionSelected     => SelectedBlurType == BlurType.Motion;
     public bool IsOutOfFocusSelected => SelectedBlurType == BlurType.OutOfFocus;
@@ -145,6 +171,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _history.Clear();
         OnPropertyChanged(nameof(CanUndo));
         OnPropertyChanged(nameof(CanRedo));
+
+        // New image invalidates any prior estimator suggestions/acceptance.
+        MotionSuggestion = null;
+        DefocusSuggestion = null;
+        NoiseSuggestion = null;
+        _acceptedNoiseVariance = null;
+
         Reset();
     }
 
@@ -255,7 +288,158 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void InvalidateFullResCache() => _fullResBuffer = null;
 
     private KernelParams BuildCurrentParams()
-        => new KernelParams(SelectedBlurType, Angle, Length, Smoothness, Radius, Sigma, SelectedAlgorithm);
+        => new KernelParams(SelectedBlurType, Angle, Length, Smoothness, Radius, Sigma, SelectedAlgorithm,
+                             NoiseVariance: _acceptedNoiseVariance);
+
+    // ---- Automatic parameter estimation (Phase 1.d) -----------------------------------
+    //
+    // Estimators run on _originalFullRes in LINEAR LIGHT, never the proxy: motion length
+    // and defocus radius are pixel-scaled quantities that are only correct at full-res.
+
+    [RelayCommand]
+    private void EstimateMotion()
+    {
+        if (_originalFullRes is null) return;
+        var gray = ToLinearGrayscale(_originalFullRes);
+        var est = CepstralMotionEstimator.Estimate(gray, _originalFullRes.Width, _originalFullRes.Height);
+        var radonAngle = RadonMotionEstimator.EstimateAngleDegrees(gray, _originalFullRes.Width, _originalFullRes.Height);
+        // Record both estimator provenances; the cepstral entry is the one an Accept
+        // marks (it supplies the accepted angle/length). Radon supplies a cross-check
+        // angle only — no independent Accept/Dismiss surface.
+        SuggestionHistory.Add(new SuggestionRecord(
+            CepstralMotionEstimator.Id, CepstralMotionEstimator.Version, est, est.Confidence, DateTime.UtcNow));
+        SuggestionHistory.Add(new SuggestionRecord(
+            RadonMotionEstimator.Id, RadonMotionEstimator.Version, radonAngle, est.Confidence, DateTime.UtcNow));
+        MotionSuggestion = new MotionSuggestion(est.Angle, est.Length, est.Confidence);
+    }
+
+    [RelayCommand]
+    private void AcceptMotionSuggestion()
+    {
+        if (MotionSuggestion is null) return;
+        // Standard slider-change flow (OnAngleChanged/OnLengthChanged) pushes into
+        // ParamHistory and invalidates the full-res cache via the existing partials.
+        Angle = MotionSuggestion.Angle;
+        Length = MotionSuggestion.Length;
+        MarkSuggestionAccepted(CepstralMotionEstimator.Id);
+        MotionSuggestion = null;
+    }
+
+    [RelayCommand]
+    private void DismissMotionSuggestion()
+    {
+        if (MotionSuggestion is null) return;
+        MarkSuggestionDismissed(CepstralMotionEstimator.Id);
+        MotionSuggestion = null;
+    }
+
+    [RelayCommand]
+    private void EstimateDefocus()
+    {
+        if (_originalFullRes is null) return;
+        var gray = ToLinearGrayscale(_originalFullRes);
+        var est = DefocusRadiusEstimator.Estimate(gray, _originalFullRes.Width, _originalFullRes.Height);
+        SuggestionHistory.Add(new SuggestionRecord(
+            DefocusRadiusEstimator.Id, DefocusRadiusEstimator.Version, est, est.Confidence, DateTime.UtcNow));
+        DefocusSuggestion = new DefocusSuggestion(est.Radius, est.Confidence);
+    }
+
+    [RelayCommand]
+    private void AcceptDefocusSuggestion()
+    {
+        if (DefocusSuggestion is null) return;
+        Radius = DefocusSuggestion.Radius; // OnRadiusChanged invalidates the full-res cache.
+        MarkSuggestionAccepted(DefocusRadiusEstimator.Id);
+        DefocusSuggestion = null;
+    }
+
+    [RelayCommand]
+    private void DismissDefocusSuggestion()
+    {
+        if (DefocusSuggestion is null) return;
+        MarkSuggestionDismissed(DefocusRadiusEstimator.Id);
+        DefocusSuggestion = null;
+    }
+
+    [RelayCommand]
+    private void EstimateNoise()
+    {
+        if (_originalFullRes is null) return;
+        var gray = ToLinearGrayscale(_originalFullRes);
+        var est = WaveletNoiseEstimator.Estimate(gray, _originalFullRes.Width, _originalFullRes.Height);
+        SuggestionHistory.Add(new SuggestionRecord(
+            WaveletNoiseEstimator.Id, WaveletNoiseEstimator.Version, est, est.Confidence, DateTime.UtcNow));
+        NoiseSuggestion = new NoiseSuggestionVm(est.SigmaNoise, est.SuggestedK, est.Confidence);
+    }
+
+    [RelayCommand]
+    private void AcceptNoiseSuggestion()
+    {
+        if (NoiseSuggestion is null) return;
+        Smoothness = NoiseSuggestion.SuggestedK; // OnSmoothnessChanged also invalidates the cache.
+        _acceptedNoiseVariance = NoiseSuggestion.SigmaNoise * NoiseSuggestion.SigmaNoise;
+        MarkSuggestionAccepted(WaveletNoiseEstimator.Id);
+        NoiseSuggestion = null;
+        // _acceptedNoiseVariance is a plain field (not an [ObservableProperty]), so the
+        // Smoothness-change invalidation above is coincidental — invalidate explicitly so
+        // BuildCurrentParams picks up the new NoiseVariance even if K happened not to change.
+        InvalidateFullResCache();
+    }
+
+    [RelayCommand]
+    private void DismissNoiseSuggestion()
+    {
+        if (NoiseSuggestion is null) return;
+        MarkSuggestionDismissed(WaveletNoiseEstimator.Id);
+        NoiseSuggestion = null;
+    }
+
+    // Searches backwards for the most recent SuggestionHistory entry from the given
+    // estimator. Backward search (rather than positional [^N] indexing) is required
+    // because EstimateMotion appends TWO records (cepstral + Radon) per invocation, and
+    // repeated Estimate calls without an intervening Accept/Dismiss would otherwise make
+    // positional indexing target the wrong entry.
+    private void MarkSuggestionAccepted(string estimatorId)
+    {
+        for (int i = SuggestionHistory.Count - 1; i >= 0; i--)
+        {
+            if (SuggestionHistory[i].EstimatorId == estimatorId)
+            {
+                SuggestionHistory[i] = SuggestionHistory[i] with { AcceptedAtUtc = DateTime.UtcNow };
+                return;
+            }
+        }
+    }
+
+    private void MarkSuggestionDismissed(string estimatorId)
+    {
+        for (int i = SuggestionHistory.Count - 1; i >= 0; i--)
+        {
+            if (SuggestionHistory[i].EstimatorId == estimatorId)
+            {
+                SuggestionHistory[i] = SuggestionHistory[i] with { DismissedAtUtc = DateTime.UtcNow };
+                return;
+            }
+        }
+    }
+
+    // BT.601 luma weighting applied AFTER per-channel sRGB->linear decode. ImageBuffer
+    // channels are sRGB-encoded floats in [0,1] (RunDeconvolve conditionally linearizes
+    // them the same way for LinearLight processing) — estimators need linear-light input
+    // so their pixel-scaled outputs (motion length, defocus radius) aren't skewed by gamma.
+    private static float[] ToLinearGrayscale(ImageBuffer buf)
+    {
+        int n = buf.PixelCount;
+        var g = new float[n];
+        for (int i = 0; i < n; i++)
+        {
+            float linR = Deblur.Engine.Color.SrgbLinear.ToLinear(buf.R[i]);
+            float linG = Deblur.Engine.Color.SrgbLinear.ToLinear(buf.G[i]);
+            float linB = Deblur.Engine.Color.SrgbLinear.ToLinear(buf.B[i]);
+            g[i] = 0.299f * linR + 0.587f * linG + 0.114f * linB;
+        }
+        return g;
+    }
 
     private void PushCurrentParams()
     {

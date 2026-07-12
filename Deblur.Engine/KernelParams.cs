@@ -7,4 +7,5 @@ public readonly record struct KernelParams(
     float Smoothness,
     float Radius,
     float Sigma,
-    AlgorithmType Algorithm);
+    AlgorithmType Algorithm,
+    float? NoiseVariance = null);

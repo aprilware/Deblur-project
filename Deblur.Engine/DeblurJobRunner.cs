@@ -165,13 +165,13 @@ public sealed class DeblurJobRunner : IDisposable
         {
             var (y, cb, cr) = Deblur.Engine.Color.YCbCr.FromRgb(deconvIn.R, deconvIn.G, deconvIn.B);
             var yBuf = new ImageBuffer(deconvIn.Width, deconvIn.Height, y, (float[])y.Clone(), (float[])y.Clone());
-            var deconvY = _deconvolvers[p.Algorithm].Apply(yBuf, psf, new DeconvolutionParams(K: p.Smoothness), options);
+            var deconvY = _deconvolvers[p.Algorithm].Apply(yBuf, psf, new DeconvolutionParams(K: p.Smoothness, NoiseVariance: p.NoiseVariance), options);
             var (r, g, b) = Deblur.Engine.Color.YCbCr.ToRgb(deconvY.R, cb, cr);
             result = new ImageBuffer(deconvIn.Width, deconvIn.Height, r, g, b);
         }
         else
         {
-            result = _deconvolvers[p.Algorithm].Apply(deconvIn, psf, new DeconvolutionParams(K: p.Smoothness), options);
+            result = _deconvolvers[p.Algorithm].Apply(deconvIn, psf, new DeconvolutionParams(K: p.Smoothness, NoiseVariance: p.NoiseVariance), options);
         }
 
         if (options.LinearLight)
