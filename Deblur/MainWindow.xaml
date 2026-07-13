@@ -95,6 +95,37 @@
                             <TextBlock Text="Length (px, proxy)" Margin="0,8,0,0"/>
                             <Slider Minimum="0" Maximum="100" Value="{Binding Length}"/>
                             <TextBlock Text="{Binding Length, StringFormat={}{0:0.0}}" HorizontalAlignment="Right"/>
+
+                            <Button Content="Estimate motion" Command="{Binding EstimateMotionCommand}"
+                                    Margin="0,8,0,4" IsEnabled="{Binding HasImage}"/>
+                            <Border BorderThickness="1" BorderBrush="LightGray" Padding="4"
+                                    Visibility="{Binding MotionSuggestion, Converter={StaticResource NullToVis}}">
+                                <StackPanel>
+                                    <TextBlock TextWrapping="Wrap">
+                                        <Run Text="Suggested: "/>
+                                        <Run Text="{Binding MotionSuggestion.Length, StringFormat={}{0:F1} px}"/>
+                                        <Run Text=" @ "/>
+                                        <Run Text="{Binding MotionSuggestion.Angle, StringFormat={}{0:F0}°}"/>
+                                        <Run Text=" (conf. "/>
+                                        <Run Text="{Binding MotionSuggestion.Confidence, StringFormat={}{0:P0}}"/>
+                                        <Run Text=")"/>
+                                    </TextBlock>
+                                    <TextBlock TextWrapping="Wrap" Margin="0,2,0,0" FontSize="11" Foreground="#666">
+                                        <Run Text="Radon cross-check: "/>
+                                        <Run Text="{Binding MotionSuggestion.RadonAngle, StringFormat={}{0:F0}°}"/>
+                                        <Run Text=" (Δ "/>
+                                        <Run Text="{Binding MotionSuggestion.RadonDisagreementDegrees, StringFormat={}{0:F0}°}"/>
+                                        <Run Text=")"/>
+                                    </TextBlock>
+                                    <TextBlock Foreground="#B00" TextWrapping="Wrap" Margin="0,4,0,0"
+                                               Visibility="{Binding MotionSuggestion.Confidence, Converter={StaticResource LowConfToVis}}"
+                                               Text="Low confidence — the estimator can't distinguish motion from image structure. Manual sliders recommended."/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                        <Button Content="Accept" Command="{Binding AcceptMotionSuggestionCommand}" Margin="0,0,4,0"/>
+                                        <Button Content="Dismiss" Command="{Binding DismissMotionSuggestionCommand}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </Grid>
 
@@ -103,6 +134,28 @@
                             <TextBlock Text="Radius (px, proxy)" Margin="0,4,0,0"/>
                             <Slider Minimum="0" Maximum="50" Value="{Binding Radius}"/>
                             <TextBlock Text="{Binding Radius, StringFormat={}{0:0.0}}" HorizontalAlignment="Right"/>
+
+                            <Button Content="Estimate radius" Command="{Binding EstimateDefocusCommand}"
+                                    Margin="0,8,0,4" IsEnabled="{Binding HasImage}"/>
+                            <Border BorderThickness="1" BorderBrush="LightGray" Padding="4"
+                                    Visibility="{Binding DefocusSuggestion, Converter={StaticResource NullToVis}}">
+                                <StackPanel>
+                                    <TextBlock TextWrapping="Wrap">
+                                        <Run Text="Suggested: "/>
+                                        <Run Text="{Binding DefocusSuggestion.Radius, StringFormat={}{0:F1} px}"/>
+                                        <Run Text=" (conf. "/>
+                                        <Run Text="{Binding DefocusSuggestion.Confidence, StringFormat={}{0:P0}}"/>
+                                        <Run Text=")"/>
+                                    </TextBlock>
+                                    <TextBlock Foreground="#B00" TextWrapping="Wrap" Margin="0,4,0,0"
+                                               Visibility="{Binding DefocusSuggestion.Confidence, Converter={StaticResource LowConfToVis}}"
+                                               Text="Low confidence — no clear disc-PSF zero found. Manual sliders recommended."/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                        <Button Content="Accept" Command="{Binding AcceptDefocusSuggestionCommand}" Margin="0,0,4,0"/>
+                                        <Button Content="Dismiss" Command="{Binding DismissDefocusSuggestionCommand}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </Grid>
 
@@ -133,6 +186,30 @@
                         <TextBlock Text="{Binding RoiFeatherRadius, StringFormat={}{0} px}"
                                    Margin="0,0,0,4"
                                    IsEnabled="{Binding RoiEnabled}"/>
+
+                        <Button Content="Estimate noise" Command="{Binding EstimateNoiseCommand}"
+                                Margin="0,12,0,4" IsEnabled="{Binding HasImage}"/>
+                        <Border BorderThickness="1" BorderBrush="LightGray" Padding="4"
+                                Visibility="{Binding NoiseSuggestion, Converter={StaticResource NullToVis}}">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap">
+                                    <Run Text="Suggested K: "/>
+                                    <Run Text="{Binding NoiseSuggestion.SuggestedK, StringFormat={}{0:E2}}"/>
+                                    <Run Text=" (σ "/>
+                                    <Run Text="{Binding NoiseSuggestion.SigmaNoise, StringFormat={}{0:F4}}"/>
+                                    <Run Text=", conf. "/>
+                                    <Run Text="{Binding NoiseSuggestion.Confidence, StringFormat={}{0:P0}}"/>
+                                    <Run Text=")"/>
+                                </TextBlock>
+                                <TextBlock Foreground="#B00" TextWrapping="Wrap" Margin="0,4,0,0"
+                                           Visibility="{Binding NoiseSuggestion.Confidence, Converter={StaticResource LowConfToVis}}"
+                                           Text="Low confidence — noise is dominant vs signal. Manual K recommended."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <Button Content="Accept" Command="{Binding AcceptNoiseSuggestionCommand}" Margin="0,0,4,0"/>
+                                    <Button Content="Dismiss" Command="{Binding DismissNoiseSuggestionCommand}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
 
                         <Button Content="Reset" Margin="0,12,0,0" Command="{x:Static local:AppCommands.Reset}"/>
                         <Button Content="Render full resolution" Margin="0,8,0,0" Command="{x:Static local:AppCommands.RenderFull}"/>
