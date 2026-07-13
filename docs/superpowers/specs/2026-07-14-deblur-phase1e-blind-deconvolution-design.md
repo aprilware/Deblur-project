@@ -25,6 +25,7 @@ An examiner loads a blurred image where the blur type isn't obvious (a security-
 - **Spatially-variant blur** (per-tile kernels). Stretch goal deferred beyond phase 1.
 - **Live-preview blind**. Blind is full-res-only, same routing as Richardson-Lucy and Landweber.
 - **Non-blind kernel refinement** (user picks a rough Motion + click "Refine" to run blind starting from that seed). Nice UX but adds scope; deferred.
+- **Accept / Edit / Reject gate + kernel hand-off workflow**. The roadmap's §3.2 calls for the examiner to accept, edit, or reject the estimated kernel, and — critically — for the accepted kernel to run through a **non-blind** deconvolution algorithm for the evidentiary output. Phase 1.e ships blind end-to-end (blind estimates AND deblurs on the same run) as an interim step. The full workflow lands in Phase 1.f alongside the PSF editor and kernel library. **Phase 2's audit log and report generator MUST serialize the estimated kernel** (as a `float[,]` payload + provenance: `estimator id`, `version`, `time`, `source-image hash`) into every audit record and evidentiary report — recovered kernels are as much forensic provenance as the algorithm identifiers already tracked by `AlgorithmMetadata`.
 - Fixing rolled-up items from Phase 1.d review: proxy/full-res noise-variance mismatch in live preview, no unit test for the "estimators receive linear grayscale" invariant, cepstral confidence formula recalibration.
 
 ## Approach
@@ -37,9 +38,16 @@ Coarse-to-fine pyramid: 4 levels at scales `[1/8, 1/4, 1/2, 1/1]` of the input. 
 2. Initialize kernel as a small centered delta (or from the previous coarser scale, upscaled 2× via bilinear).
 3. Run N outer iterations of:
    a. **Latent image estimation** — given current kernel, solve a fast Wiener-with-Tikhonov filter (`conj(H) / (|H|² + λ_i · |C|²)`) for the latent image. Uses the existing `FftDeconvolverBase` machinery.
-   b. **Shock filter** on the latent image — sharpens edges as a surrogate for the sparse-gradient prior (Osher & Rudin 1990). One pass, small step size.
-   c. **Kernel estimation** — given the shock-filtered latent, solve a constrained least-squares problem in the frequency domain for the kernel that best fits `blurred ≈ H_new * latent`. Frequency-domain formula: `H = (conj(Latent) · Blurred) / (|Latent|² + λ_k)`.
-   d. **Kernel projection** — inverse-FFT the estimated `H`, project to the spatial-domain kernel: (i) clip to a fixed centered `31 × 31` window, (ii) threshold small values (< 5% of max) to 0 for sparsity, (iii) enforce non-negativity, (iv) normalize to sum = 1.
+   b. **Edge prediction step** — sharpen edges as a surrogate for the sparse-gradient prior (Cho & Lee's prediction step):
+      - Light Gaussian pre-smooth with `σ ≈ 1` to suppress noise that would sharpen into false edges.
+      - Osher-Rudin shock filter (Osher & Rudin 1990) with `dt ≤ 0.25` and 2-3 passes. Larger `dt` or single-pass at `dt = 1.0` is above the shock filter's numerical stability range and creates artifact edges on noisy content.
+   c. **Kernel estimation — GRADIENT DOMAIN** — given the shock-filtered latent, estimate the kernel from IMAGE GRADIENTS, not intensities. Compute `∂x` and `∂y` derivatives of both the shock-filtered latent and the original blurred input, then solve in the frequency domain:
+      ```
+      H = ( conj(F(∂x Latent)) · F(∂x Blurred) + conj(F(∂y Latent)) · F(∂y Blurred) )
+        / ( |F(∂x Latent)|² + |F(∂y Latent)|² + λ_k )
+      ```
+      Intensity-domain kernel estimation is ill-conditioned on natural images and biases toward a delta (identity) kernel on real footage — the gradient domain is essential for stable recovery. This is the Cho & Lee (2009) formulation.
+   d. **Kernel projection** — inverse-FFT the estimated `H`, project to the spatial-domain kernel: (i) clip to a per-scale centered odd window (see hyperparameters), (ii) threshold small values (< 5% of max) to 0 for sparsity, (iii) enforce non-negativity, (iv) normalize to sum = 1.
 4. Upscale kernel 2× (bilinear) as initialization for the next finer scale.
 
 At the finest scale, output: (a) the deblurred latent image, (b) the estimated kernel.
@@ -48,11 +56,12 @@ At the finest scale, output: (a) the deblurred latent image, (b) the estimated k
 - Outer iterations: 5.
 - Wiener regularization `λ_i` (image estimation): 1e-3.
 - Wiener regularization `λ_k` (kernel estimation): 1e-3.
-- Shock-filter step: 1.0 (one pass per outer iteration).
+- Prediction pre-smooth Gaussian `σ = 1.0` (single 5×5 kernel).
+- Shock-filter step `dt = 0.25`, 3 passes per outer iteration.
 - Sparsity threshold: 5% of kernel max.
-- Kernel window size: `31 × 31` at every scale (large enough for motion up to ~15 px in any direction; sufficient for full-res under typical proxy scales).
+- **Kernel window size scales with pyramid level** — `[5, 9, 17, 31]` at scales `[1/8, 1/4, 1/2, 1/1]` (odd, centered). Growing the window with the scale respects the coarse-to-fine principle: at 1/8 resolution motion effectively spans ≤5 px, and clipping to that size prevents the kernel-estimation FFT from being contaminated by noise in frequencies the coarse image can't resolve.
 
-Total inner-loop cost: 4 scales × 5 iterations × (2 FFTs latent + 1 shock + 2 FFTs kernel) ≈ 100 FFTs. On a full-res 4K image with 4× downsampling per level, the coarse levels are cheap; the fine level dominates. Practical budget: ~5-15 seconds on typical inputs.
+Total inner-loop cost: 4 scales × 5 iterations × (2 FFTs latent + 3 shock + 4 FFTs kernel with gradients) ≈ 180 FFTs. On a full-res 4K image with 4× downsampling per level, the coarse levels are cheap; the fine level dominates. Practical budget: ~5-15 seconds on typical inputs.
 
 ### 2. Interface & metadata
 
@@ -141,7 +150,9 @@ The rest of the algorithm is deterministic: no random noise, no stochastic sampl
 
 **New in `Deblur.Tests`:**
 - `BlindDeconvolutionDeconvolverTests.cs`:
-  - Recovers a known Motion PSF from a synthetic-blurred `TexturedNoise` — cosine similarity between estimated kernel and true kernel > 0.6 after normalizing both to their centroid.
+  - Recovers a known Motion PSF from a synthetic-blurred `TexturedNoise` — cosine similarity between estimated kernel and true kernel > 0.6 after centroid alignment.
+  - Recovers a synthetic **defocus disc** PSF from `TexturedNoise` — cosine similarity comparable to the motion case (> 0.5, slightly relaxed because disc kernels have less directional structure than lines).
+  - **Sharp-input identity check**: a naturally-sharp `TexturedNoise` input (no blur applied) recovers a near-delta kernel — the estimated kernel's center pixel > 0.5 (single dominant peak), and the sum of all off-center pixels < 0.5.
   - Deblurred output PSNR improvement over blurred > 3 dB.
   - Kernel non-negativity + sum-to-1 hold on the returned `LastEstimatedKernel`.
   - Extreme parameters (Length=100 motion) → no NaN/Inf in output or kernel.
@@ -160,7 +171,9 @@ The rest of the algorithm is deterministic: no random noise, no stochastic sampl
 - All 154 Phase 1.d tests remain green. Test count target: 154 → ~170.
 - Fixed hyperparameters (§1). No UI sliders.
 - `LastEstimatedKernel` is a public getter on `BlindDeconvolutionDeconvolver`; the VM reads it after each `RenderFullAsync` completes. Not thread-safe on its own — relies on the runner's single-threaded discipline.
-- Kernel size: 31×31 fixed — covers motion up to ~15 px in any direction, which handles typical CCTV motion blur and moderate camera shake. Blur larger than that produces a truncated kernel and degraded recovery; a future variant that grows kernel size adaptively from a rough length estimate is deferred.
+- Kernel window scales per pyramid level: `[5, 9, 17, 31]` at scales `[1/8, 1/4, 1/2, 1/1]` — all odd, centered. The 31×31 finest-scale window covers motion up to ~15 px in any direction, which handles typical CCTV motion blur and moderate camera shake. Blur larger than that produces a truncated kernel and degraded recovery; a future variant that grows the finest-scale window adaptively from a rough length estimate is deferred.
+- Kernel estimation runs in the **gradient domain** (∂x and ∂y of both latent and blurred). Intensity-domain estimation is out — it's ill-conditioned on natural images.
+- Edge-prediction step: Gaussian pre-smooth `σ = 1.0`, then shock filter `dt = 0.25` × 3 passes.
 - Multi-scale pyramid: 4 levels at scales `[1/8, 1/4, 1/2, 1/1]`.
 - Cancellation: `CancellationToken` from `PipelineOptions.CancellationToken` checked at every outer-iteration boundary AND at every scale transition.
 - Metadata: `Id = "blind-cho-lee"`, `Version = "1.0"`. Description honestly names the multi-scale MAP approach + shock filter + fixed 31×31 kernel + non-tunable defaults. Citation: Cho & Lee (2009); Levin et al. (2011) for the theoretical foundation.
