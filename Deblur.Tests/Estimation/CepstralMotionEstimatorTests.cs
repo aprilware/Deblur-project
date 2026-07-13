@@ -49,7 +49,12 @@ public class CepstralMotionEstimatorTests
         var gt = SyntheticImages.TexturedNoise(256, 256, seed: 42);
         var gray = ToGrayscale(gt);
         var est = CepstralMotionEstimator.Estimate(gray, gt.Width, gt.Height);
-        Assert.True(est.Confidence < 0.5f, $"expected low confidence on sharp image, got {est.Confidence}");
+        // Threshold tied to the VM's UX gate (0.35) — if this drifts above 0.35,
+        // the Accept button would enable on genuinely-sharp images and the
+        // low-confidence warning would hide. Keep them locked together (VM
+        // AcceptConfidenceThreshold, LowConfidenceToVisibilityConverter, this
+        // test all use 0.35).
+        Assert.True(est.Confidence < 0.35f, $"expected low confidence (< 0.35) on sharp image, got {est.Confidence}");
     }
 
     private static float[] ToGrayscale(ImageBuffer buf)

@@ -110,6 +110,13 @@
                                         <Run Text="{Binding MotionSuggestion.Confidence, StringFormat={}{0:P0}}"/>
                                         <Run Text=")"/>
                                     </TextBlock>
+                                    <TextBlock TextWrapping="Wrap" Margin="0,2,0,0" FontSize="11" Foreground="#666">
+                                        <Run Text="Radon cross-check: "/>
+                                        <Run Text="{Binding MotionSuggestion.RadonAngle, StringFormat={}{0:F0}°}"/>
+                                        <Run Text=" (Δ "/>
+                                        <Run Text="{Binding MotionSuggestion.RadonDisagreementDegrees, StringFormat={}{0:F0}°}"/>
+                                        <Run Text=")"/>
+                                    </TextBlock>
                                     <TextBlock Foreground="#B00" TextWrapping="Wrap" Margin="0,4,0,0"
                                                Visibility="{Binding MotionSuggestion.Confidence, Converter={StaticResource LowConfToVis}}"
                                                Text="Low confidence — the estimator can't distinguish motion from image structure. Manual sliders recommended."/>

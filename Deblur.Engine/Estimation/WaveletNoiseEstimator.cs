@@ -43,7 +43,12 @@ public static class WaveletNoiseEstimator
             varLL += d * d;
         }
         varLL /= ll.Length;
-        float sigmaSignal = (float)Math.Sqrt(Math.Max(varLL - sigmaNoise * sigmaNoise, 1e-8));
+        // Haar 2D LL = (a + b + c + d) / 2, so var(LL) ≈ 4·var(signal) + var(noise).
+        // Undo the 4× amplification before subtracting noise power so sigmaSignal
+        // reflects per-pixel signal variance. Without this, sigmaSignal is 2× low
+        // and suggestedK = σ²_noise / σ²_signal runs ~4× low — Wiener/Tikhonov
+        // users who accept the K under-regularize.
+        float sigmaSignal = (float)Math.Sqrt(Math.Max(varLL / 4.0 - sigmaNoise * sigmaNoise, 1e-8));
 
         float noiseVar = sigmaNoise * sigmaNoise;
         float signalVar = sigmaSignal * sigmaSignal;

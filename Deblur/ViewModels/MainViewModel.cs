@@ -12,7 +12,27 @@ using Deblur.Services;
 namespace Deblur.ViewModels;
 
 /// <summary>Snapshot of a motion-blur suggestion surfaced from <see cref="CepstralMotionEstimator"/>.</summary>
-public sealed record MotionSuggestion(float Angle, float Length, float Confidence);
+/// <summary>
+/// Motion suggestion presented to the examiner. Angle/Length/Confidence come from
+/// the cepstral estimator (the primary source). RadonAngle is the independent
+/// cross-check — surfaced in the UI so the examiner can see whether the two
+/// methods agree. Widely divergent estimates are the honest signal that the
+/// estimation is unreliable and manual PSF entry is needed.
+/// </summary>
+public sealed record MotionSuggestion(float Angle, float Length, float Confidence, float RadonAngle)
+{
+    /// <summary>Absolute angular difference between cepstral and Radon, wrapped to [0, 90].</summary>
+    public float RadonDisagreementDegrees
+    {
+        get
+        {
+            float a = ((Angle % 180f) + 180f) % 180f;
+            float b = ((RadonAngle % 180f) + 180f) % 180f;
+            float d = Math.Abs(a - b);
+            return Math.Min(d, 180f - d);
+        }
+    }
+}
 
 /// <summary>Snapshot of a defocus-radius suggestion surfaced from <see cref="DefocusRadiusEstimator"/>.</summary>
 public sealed record DefocusSuggestion(float Radius, float Confidence);
@@ -320,16 +340,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             CepstralMotionEstimator.Id, CepstralMotionEstimator.Version, est, est.Confidence, DateTime.UtcNow));
         SuggestionHistory.Add(new SuggestionRecord(
             RadonMotionEstimator.Id, RadonMotionEstimator.Version, radonAngle, est.Confidence, DateTime.UtcNow));
-        MotionSuggestion = new MotionSuggestion(est.Angle, est.Length, est.Confidence);
+        MotionSuggestion = new MotionSuggestion(est.Angle, est.Length, est.Confidence, radonAngle);
     }
 
     // Confidence gate for Accept: cepstral / defocus / wavelet-noise estimators can
     // produce plausible-looking numbers on natural imagery that they cannot actually
     // support (the cepstrum is dominated by image structure, not the injected PSF).
-    // A ≥30% confidence gate keeps accidental accepts from silently corrupting the
-    // preview with a wrong PSF. Users who need to override — say, on a low-confidence
-    // suggestion they've cross-checked visually — should use the sliders directly.
-    private const float AcceptConfidenceThreshold = 0.30f;
+    // Threshold locked with CepstralMotionEstimatorTests.SharpImage_LowConfidence and
+    // LowConfidenceToVisibilityConverter — a genuinely sharp image measures ≈ 0.347
+    // (recorded in that test), so the gate sits just above at 0.35 to reject it.
+    // Users who need to override — say, on a low-confidence suggestion they've
+    // cross-checked visually — should use the sliders directly.
+    private const float AcceptConfidenceThreshold = 0.35f;
 
     [RelayCommand(CanExecute = nameof(CanAcceptMotionSuggestion))]
     private void AcceptMotionSuggestion()
@@ -400,13 +422,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void AcceptNoiseSuggestion()
     {
         if (NoiseSuggestion is null) return;
-        Smoothness = NoiseSuggestion.SuggestedK; // OnSmoothnessChanged also invalidates the cache.
+        // Set _acceptedNoiseVariance BEFORE Smoothness so the OnSmoothnessChanged
+        // partial (which fires PushCurrentParams) sees the new noise variance in
+        // BuildCurrentParams. Assigning Smoothness first queued a preview job with
+        // the OLD (null) noise variance, so the live preview stayed on fixed-γ
+        // CLS until the next slider tweak.
         _acceptedNoiseVariance = NoiseSuggestion.SigmaNoise * NoiseSuggestion.SigmaNoise;
+        Smoothness = NoiseSuggestion.SuggestedK; // OnSmoothnessChanged invalidates the cache and requests preview.
         MarkSuggestionAccepted(WaveletNoiseEstimator.Id);
         NoiseSuggestion = null;
-        // _acceptedNoiseVariance is a plain field (not an [ObservableProperty]), so the
-        // Smoothness-change invalidation above is coincidental — invalidate explicitly so
-        // BuildCurrentParams picks up the new NoiseVariance even if K happened not to change.
+        // Belt-and-suspenders: invalidate explicitly in case SuggestedK happens to
+        // equal the current Smoothness (then OnSmoothnessChanged wouldn't fire).
         InvalidateFullResCache();
     }
 
