@@ -116,6 +116,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
+    // The three Accept commands' CanExecute predicates read the suggestion's Confidence,
+    // so they need to be re-evaluated whenever the suggestion property changes.
+    // [RelayCommand] with CanExecute doesn't auto-listen to ObservableProperty changes.
+    partial void OnMotionSuggestionChanged(MotionSuggestion? value)
+        => AcceptMotionSuggestionCommand.NotifyCanExecuteChanged();
+    partial void OnDefocusSuggestionChanged(DefocusSuggestion? value)
+        => AcceptDefocusSuggestionCommand.NotifyCanExecuteChanged();
+    partial void OnNoiseSuggestionChanged(NoiseSuggestionVm? value)
+        => AcceptNoiseSuggestionCommand.NotifyCanExecuteChanged();
+
     partial void OnSelectedBlurTypeChanged(BlurType value)
     {
         OnPropertyChanged(nameof(IsMotionSelected));
@@ -313,7 +323,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         MotionSuggestion = new MotionSuggestion(est.Angle, est.Length, est.Confidence);
     }
 
-    [RelayCommand]
+    // Confidence gate for Accept: cepstral / defocus / wavelet-noise estimators can
+    // produce plausible-looking numbers on natural imagery that they cannot actually
+    // support (the cepstrum is dominated by image structure, not the injected PSF).
+    // A ≥30% confidence gate keeps accidental accepts from silently corrupting the
+    // preview with a wrong PSF. Users who need to override — say, on a low-confidence
+    // suggestion they've cross-checked visually — should use the sliders directly.
+    private const float AcceptConfidenceThreshold = 0.30f;
+
+    [RelayCommand(CanExecute = nameof(CanAcceptMotionSuggestion))]
     private void AcceptMotionSuggestion()
     {
         if (MotionSuggestion is null) return;
@@ -324,6 +342,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         MarkSuggestionAccepted(CepstralMotionEstimator.Id);
         MotionSuggestion = null;
     }
+
+    private bool CanAcceptMotionSuggestion()
+        => MotionSuggestion is { } s && s.Confidence >= AcceptConfidenceThreshold;
 
     [RelayCommand]
     private void DismissMotionSuggestion()
@@ -344,7 +365,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         DefocusSuggestion = new DefocusSuggestion(est.Radius, est.Confidence);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanAcceptDefocusSuggestion))]
     private void AcceptDefocusSuggestion()
     {
         if (DefocusSuggestion is null) return;
@@ -352,6 +373,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         MarkSuggestionAccepted(DefocusRadiusEstimator.Id);
         DefocusSuggestion = null;
     }
+
+    private bool CanAcceptDefocusSuggestion()
+        => DefocusSuggestion is { } s && s.Confidence >= AcceptConfidenceThreshold;
 
     [RelayCommand]
     private void DismissDefocusSuggestion()
@@ -372,7 +396,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         NoiseSuggestion = new NoiseSuggestionVm(est.SigmaNoise, est.SuggestedK, est.Confidence);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanAcceptNoiseSuggestion))]
     private void AcceptNoiseSuggestion()
     {
         if (NoiseSuggestion is null) return;
@@ -385,6 +409,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         // BuildCurrentParams picks up the new NoiseVariance even if K happened not to change.
         InvalidateFullResCache();
     }
+
+    private bool CanAcceptNoiseSuggestion()
+        => NoiseSuggestion is { } s && s.Confidence >= AcceptConfidenceThreshold;
 
     [RelayCommand]
     private void DismissNoiseSuggestion()

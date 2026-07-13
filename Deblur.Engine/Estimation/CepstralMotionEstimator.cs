@@ -6,6 +6,28 @@ public static class CepstralMotionEstimator
 {
     public const string Id = "cepstral-motion";
     public const string Version = "1.0";
+
+    /// <summary>
+    /// Testimony-ready description of the estimator's method and limitations.
+    /// The forensic audit log (Phase 2) reads this. Any change here must bump Version.
+    /// </summary>
+    public const string DescriptionMarkdown =
+        "Cepstral motion blur estimation via the log power spectrum. Method: apply a Hann " +
+        "window, take FFT, compute log |F|², take inverse FFT to produce the cepstrum, and " +
+        "find the dominant negative peak away from the origin. The peak's polar coordinates " +
+        "give the estimated motion angle and length in pixels.\n\n" +
+        "LIMITATIONS: This method assumes the image's own cepstrum is broadband and " +
+        "featureless — the motion PSF's periodic sinc zeros then show up as an isolated " +
+        "dark peak. This assumption holds on textured or noisy content (film grain, dense " +
+        "vegetation, water) but FAILS on natural photographs with strong regular " +
+        "structure — buildings with repeating windows, brick patterns, textiles, printed " +
+        "text. On such content the image's OWN cepstral peaks dominate the estimate and " +
+        "the (angle, length) output is unreliable. The estimator's confidence field " +
+        "reflects the peak's prominence relative to background cepstral energy — LOW " +
+        "confidence (< 30%) means \"the peak is not distinguishable from image structure; " +
+        "manual PSF entry recommended.\" Iterative blind deconvolution (future phase) " +
+        "is the correct tool for high-quality kernel recovery on natural imagery.";
+
     private const float Eps = 1e-8f;
     private const int OriginExcludeRadius = 4;
 
