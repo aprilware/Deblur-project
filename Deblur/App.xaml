@@ -8,6 +8,7 @@
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <converters:AlgorithmToSmoothnessLabelConverter x:Key="AlgLabel"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVis"/>
         <ObjectDataProvider x:Key="AlgorithmTypeValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
             <ObjectDataProvider.MethodParameters>
                 <x:Type TypeName="engine:AlgorithmType"/>
