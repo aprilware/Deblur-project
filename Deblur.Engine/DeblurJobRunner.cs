@@ -222,7 +222,10 @@ public sealed class DeblurJobRunner : IDisposable
                 // flag stays lit and the app appears hung. Skip them in preview — show the
                 // raw proxy — and let the user see the actual iterative result on
                 // full-render (Save-As / press-Render), where the delay is expected.
-                bool isIterativePreview = p.Algorithm is AlgorithmType.RichardsonLucy or AlgorithmType.Landweber;
+                bool isIterativePreview = p.Algorithm is
+                    AlgorithmType.RichardsonLucy
+                    or AlgorithmType.Landweber
+                    or AlgorithmType.BlindDeconvolution;
                 ImageBuffer deconv = (IsNoOp(p) || isIterativePreview) ? proxy : RunDeconvolve(proxy, p);
 
                 int w = deconv.Width, h = deconv.Height;
