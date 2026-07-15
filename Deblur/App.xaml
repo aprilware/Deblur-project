@@ -10,6 +10,7 @@
         <converters:AlgorithmToSmoothnessLabelConverter x:Key="AlgLabel"/>
         <converters:NullToVisibilityConverter x:Key="NullToVis"/>
         <converters:LowConfidenceToVisibilityConverter x:Key="LowConfToVis"/>
+        <converters:AlgorithmTypeToBlindVisibilityConverter x:Key="BlindAlgoToVis"/>
         <ObjectDataProvider x:Key="AlgorithmTypeValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
             <ObjectDataProvider.MethodParameters>
                 <x:Type TypeName="engine:AlgorithmType"/>

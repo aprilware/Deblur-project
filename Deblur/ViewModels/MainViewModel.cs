@@ -51,6 +51,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private bool _suppressHistory;
     private readonly IImageCodec _codec = new WicImageCodec();
     private readonly Gdi8BitImageCodec _fallbackCodec = new();
+    private readonly BlindDeconvolutionDeconvolver _blindDeconvolver;
 
     [ObservableProperty] private BlurType _selectedBlurType = BlurType.Motion;
     [ObservableProperty] private AlgorithmType _selectedAlgorithm = AlgorithmType.Wiener;
@@ -71,6 +72,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private MotionSuggestion? _motionSuggestion;
     [ObservableProperty] private DefocusSuggestion? _defocusSuggestion;
     [ObservableProperty] private NoiseSuggestionVm? _noiseSuggestion;
+    [ObservableProperty] private float[,]? _estimatedKernel;
 
     // Wavelet-noise-estimator's accepted sigma^2, threaded into KernelParams.NoiseVariance
     // for CLS v2's discrepancy-principle gamma bisection. Null until the examiner accepts
@@ -110,6 +112,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             [AlgorithmType.RichardsonLucy]        = new RichardsonLucyDeconvolver(),
             [AlgorithmType.ConstrainedLeastSquares] = new ConstrainedLeastSquaresDeconvolver(),
             [AlgorithmType.Landweber]             = new LandweberDeconvolver(),
+            [AlgorithmType.BlindDeconvolution]    = _blindDeconvolver = new BlindDeconvolutionDeconvolver(),
         };
         _runner = new DeblurJobRunner(kernels, deconvolvers, PipelineOptions.Default);
         _runner.ProxyReady += OnProxyReady;
@@ -207,6 +210,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         DefocusSuggestion = null;
         NoiseSuggestion = null;
         _acceptedNoiseVariance = null;
+        EstimatedKernel = null;
 
         Reset();
     }
@@ -301,6 +305,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             : null;
         _fullResBuffer = await _runner.RenderFullAsync(_originalFullRes, current, _proxyScale, progress, cancellationToken);
         _fullResParams = current;
+        if (SelectedAlgorithm == AlgorithmType.BlindDeconvolution)
+            EstimatedKernel = _blindDeconvolver.LastEstimatedKernel;
     }
 
     public async Task<byte[]> RenderFullAsPngAsync(IProgress<double> progress, CancellationToken cancellationToken = default)

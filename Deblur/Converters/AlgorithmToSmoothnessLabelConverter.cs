@@ -14,6 +14,7 @@ public sealed class AlgorithmToSmoothnessLabelConverter : IValueConverter
             AlgorithmType.ConstrainedLeastSquares => "Regularization (K)",
             AlgorithmType.RichardsonLucy          => "Iterations (fixed)",
             AlgorithmType.Landweber               => "Iterations (fixed)",
+            AlgorithmType.BlindDeconvolution      => "Iterations (fixed)",
             _                                     => "Smoothness (K)",
         };
 
