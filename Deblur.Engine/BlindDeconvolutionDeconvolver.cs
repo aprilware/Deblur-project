@@ -120,7 +120,13 @@ public sealed class BlindDeconvolutionDeconvolver : IDeconvolver
         LastEstimatedKernel = kernel;
 
         // Final deblur: apply the recovered kernel to each color channel via Tikhonov.
-        return new TikhonovDeconvolver().Apply(input, kernel, new DeconvolutionParams(K: lambdaI), opt);
+        // Uses the caller-supplied Smoothness (p.K), NOT the internal lambdaI (1e-3)
+        // that regularizes the blind estimation loop — the user's Smoothness slider
+        // controls how aggressive the final deconvolution is. A smaller K produces
+        // a sharper output at the cost of noise; a larger K over-regularizes.
+        // Default slider (0.005) is a reasonable starting point; the examiner tunes
+        // per image.
+        return new TikhonovDeconvolver().Apply(input, kernel, new DeconvolutionParams(K: p.K), opt);
     }
 
     /// <summary>BT.601 luma: 0.299R + 0.587G + 0.114B.</summary>
