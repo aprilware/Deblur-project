@@ -79,8 +79,9 @@ public class BlindDeconvolutionDeconvolverTests
     //    Tikhonov's ceiling, not blind's.
     // 2. Reframing to "blind kernel matches true kernel within 1 dB" also failed
     //    (blind 8.93 vs true 11.90 dB, Δ=3 dB) because blind deconvolution has an
-    //    unrecoverable spatial shift ambiguity: any shift in the recovered kernel
-    //    is compensated by an equal shift in the recovered latent image, so PSNR-
+    //    unrecoverable spatial shift ambiguity: convolution is translation-
+    //    equivariant, so H(x-d) * I(x+d) = H(x) * I(x) — the blurred image is
+    //    invariant under simultaneous opposite shifts of kernel and latent. PSNR-
     //    vs-GT is dominated by that shift even when the kernel SHAPE is correct.
     //    (Levin et al. 2011 documents this as a fundamental theoretical property.)
     //
