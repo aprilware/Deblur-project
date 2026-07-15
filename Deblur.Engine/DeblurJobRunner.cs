@@ -157,7 +157,13 @@ public sealed class DeblurJobRunner : IDisposable
         // (Richardson-Lucy, Landweber) can check it every iteration. Frequency-domain
         // deconvolvers ignore it — they finish in one shot.
         var options = _options with { CancellationToken = cancellationToken };
-        var psf = _kernels[p.Type].Build(p);
+        // BlindDeconvolution estimates its own PSF and ignores the one passed to
+        // Apply(). Skip building it here — otherwise MotionBlurKernel.Build throws
+        // on Length=0 (the default when a user picks blind without touching the
+        // slider) even though the value is never used.
+        var psf = p.Algorithm == AlgorithmType.BlindDeconvolution
+            ? new float[1, 1] { { 1f } }
+            : _kernels[p.Type].Build(p);
         var deconvIn = input;
 
         if (options.LinearLight)
