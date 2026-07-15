@@ -129,13 +129,21 @@ public sealed class DeblurJobRunner : IDisposable
     /// have a corresponding entry. Keep this switch in sync with the dictionary the caller
     /// injects in MainViewModel.
     /// </summary>
-    private static bool IsNoOp(KernelParams p) => p.Type switch
+    private static bool IsNoOp(KernelParams p)
     {
-        BlurType.Motion     => p.Length < 1f,
-        BlurType.OutOfFocus => p.Radius < 1f,
-        BlurType.Gaussian   => p.Sigma  < 1f,
-        _                   => true,
-    };
+        // BlindDeconvolution estimates its own kernel — the blur-type sliders are
+        // hint values only (currently unused). Never short-circuit it based on the
+        // slider defaults, or blind renders would silently return the raw input.
+        if (p.Algorithm == AlgorithmType.BlindDeconvolution) return false;
+
+        return p.Type switch
+        {
+            BlurType.Motion     => p.Length < 1f,
+            BlurType.OutOfFocus => p.Radius < 1f,
+            BlurType.Gaussian   => p.Sigma  < 1f,
+            _                   => true,
+        };
+    }
 
     /// <summary>
     /// Runs the configured deconvolver against <paramref name="input"/> for kernel parameters
