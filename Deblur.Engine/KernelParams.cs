@@ -8,4 +8,5 @@ public readonly record struct KernelParams(
     float Radius,
     float Sigma,
     AlgorithmType Algorithm,
-    float? NoiseVariance = null);
+    float? NoiseVariance = null,
+    int? KernelId = null);
