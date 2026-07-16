@@ -19,10 +19,20 @@ public sealed class BlindDeconvolutionDeconvolver : IDeconvolver
             "between iterations as a surrogate for the sparse-gradient prior. Kernel projection " +
             "at each step enforces non-negativity and sum-to-1 with a 5%-of-max sparsity " +
             "threshold. Four pyramid levels at scales 1/8, 1/4, 1/2, 1/1 with kernel windows " +
-            "5, 9, 17, 31 (odd, centered). Deterministic — no random initialization. Blind " +
-            "recovery on natural imagery is inherently noisy; the recovered kernel should be " +
-            "inspected visually for testimony validation, and the estimator is unreliable on " +
-            "motion larger than ~15 px (finest kernel window is 31x31).",
+            "5, 9, 17, 31 (odd, centered). Deterministic — no random initialization. " +
+            "\n\nLIMITATIONS: (1) The recovered kernel has an unrecoverable spatial-shift " +
+            "ambiguity: convolution is translation-equivariant, so H(x-d)*I(x+d) = H(x)*I(x). " +
+            "Any shift in the recovered kernel is compensated by an equal shift in the " +
+            "recovered latent image, so the deblurred output is a shifted-but-sharpened " +
+            "version of the true latent — visually similar to the input under a PSNR-vs-GT " +
+            "comparison. Kernel SHAPE is what blind actually recovers; the sidebar's PSF " +
+            "display is the primary artifact for testimony. (2) Blind recovery on natural " +
+            "imagery is inherently noisy; the recovered kernel should be inspected visually " +
+            "for testimony validation. (3) Unreliable on motion larger than ~15 px (finest " +
+            "kernel window is 31x31). (4) The intended forensic workflow is: blind estimates " +
+            "the kernel, examiner accepts/edits/rejects it, and the accepted kernel is then " +
+            "applied via a non-blind algorithm for the evidentiary output. That accept/hand-off " +
+            "gate lands in a future phase; the current end-to-end deblur is an interim step.",
         LiteratureCitation:
             "Cho, S. & Lee, S. (2009). Fast Motion Deblurring. ACM Transactions on Graphics " +
             "28(5), 145. Levin, A., Weiss, Y., Durand, F. & Freeman, W.T. (2011). " +

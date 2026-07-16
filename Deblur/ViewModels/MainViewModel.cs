@@ -165,6 +165,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(IsWienerSelected));
         OnPropertyChanged(nameof(IsTikhonovSelected));
+        // Clear the previous blind kernel — displaying a stale kernel from a prior
+        // algorithm switch is testimony-adjacent misinformation (the PSF display
+        // would show an old kernel that no longer relates to the current algorithm).
+        // A fresh render under blind repopulates it via _blindDeconvolver.LastEstimatedKernel.
+        EstimatedKernel = null;
         InvalidateFullResCache();
         PushCurrentParams();
         PushSnapshot();
