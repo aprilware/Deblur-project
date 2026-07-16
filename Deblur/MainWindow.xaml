@@ -112,9 +112,9 @@
                                     </TextBlock>
                                     <TextBlock TextWrapping="Wrap" Margin="0,2,0,0" FontSize="11" Foreground="#666">
                                         <Run Text="Radon cross-check: "/>
-                                        <Run Text="{Binding MotionSuggestion.RadonAngle, StringFormat={}{0:F0}°}"/>
+                                        <Run Text="{Binding MotionSuggestion.RadonAngle, StringFormat={}{0:F0}°, Mode=OneWay}"/>
                                         <Run Text=" (Δ "/>
-                                        <Run Text="{Binding MotionSuggestion.RadonDisagreementDegrees, StringFormat={}{0:F0}°}"/>
+                                        <Run Text="{Binding MotionSuggestion.RadonDisagreementDegrees, StringFormat={}{0:F0}°, Mode=OneWay}"/>
                                         <Run Text=")"/>
                                     </TextBlock>
                                     <TextBlock Foreground="#B00" TextWrapping="Wrap" Margin="0,4,0,0"
@@ -212,6 +212,9 @@
                         </Border>
 
                         <Button Content="Reset" Margin="0,12,0,0" Command="{x:Static local:AppCommands.Reset}"/>
+                        <controls:PsfDisplay Kernel="{Binding EstimatedKernel}"
+                                             Visibility="{Binding SelectedAlgorithm, Converter={StaticResource BlindAlgoToVis}}"
+                                             HorizontalAlignment="Left" Margin="0,12,0,4"/>
                         <Button Content="Render full resolution" Margin="0,8,0,0" Command="{x:Static local:AppCommands.RenderFull}"/>
                     </StackPanel>
 

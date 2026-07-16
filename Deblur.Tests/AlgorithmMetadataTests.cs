@@ -16,6 +16,7 @@ public class AlgorithmMetadataTests
             new RichardsonLucyDeconvolver(),
             new ConstrainedLeastSquaresDeconvolver(),
             new LandweberDeconvolver(),
+            new BlindDeconvolutionDeconvolver(),
         };
         foreach (var d in deconvolvers)
         {
@@ -42,6 +43,7 @@ public class AlgorithmMetadataTests
         Assert.Equal("richardson-lucy",    new RichardsonLucyDeconvolver().Metadata.Id);
         Assert.Equal("cls-laplacian",      new ConstrainedLeastSquaresDeconvolver().Metadata.Id);
         Assert.Equal("landweber",          new LandweberDeconvolver().Metadata.Id);
+        Assert.Equal("blind-cho-lee",      new BlindDeconvolutionDeconvolver().Metadata.Id);
     }
 
     [Fact]
@@ -55,6 +57,7 @@ public class AlgorithmMetadataTests
             new RichardsonLucyDeconvolver().Metadata.Id,
             new ConstrainedLeastSquaresDeconvolver().Metadata.Id,
             new LandweberDeconvolver().Metadata.Id,
+            new BlindDeconvolutionDeconvolver().Metadata.Id,
         };
         Assert.Equal(ids.Length, ids.Distinct().Count());
     }

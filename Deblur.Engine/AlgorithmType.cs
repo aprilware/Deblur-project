@@ -8,4 +8,5 @@ public enum AlgorithmType
     RichardsonLucy,
     ConstrainedLeastSquares,
     Landweber,
+    BlindDeconvolution,
 }

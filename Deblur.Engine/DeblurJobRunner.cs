@@ -27,17 +27,27 @@ public sealed class DeblurJobRunner : IDisposable
     // converge. Undersizing (e.g., ceil(Length/2) for Motion) leaves the extract's
     // boundary too close to the deconvolution core and produces measurably worse
     // recovery than the whole-image path.
-    private static int EstimatePsfRadius(KernelParams p) => p.Type switch
+    private static int EstimatePsfRadius(KernelParams p)
     {
-        // MotionBlurKernel: size = 2*ceil(Length)+1 → half-size = ceil(Length),
-        // deconvolver pad = ceil(Length) + 1.
-        BlurType.Motion     => (int)Math.Ceiling(p.Length) + 1,
-        // OutOfFocusBlurKernel: size = 2*ceil(Radius)+1 → deconvolver pad = ceil(Radius) + 1.
-        BlurType.OutOfFocus => (int)Math.Ceiling((double)p.Radius) + 1,
-        // GaussianBlurKernel: size ≈ 2*ceil(3*Sigma)+1 → deconvolver pad ≈ ceil(3*Sigma) + 1.
-        BlurType.Gaussian   => (int)Math.Ceiling(3.0 * p.Sigma) + 1,
-        _                   => 1,
-    };
+        // BlindDeconvolution's finest kernel window is 31x31 (radius 15). Blind ignores
+        // the blur-type sliders, so basing the ROI pad on Length/Radius/Sigma leaves
+        // only a few pixels of context and the 31x31 kernel can't recover meaningfully.
+        // Match the finest kernel radius so the ROI extract has enough context for the
+        // multi-scale MAP loop.
+        if (p.Algorithm == AlgorithmType.BlindDeconvolution) return 32;
+
+        return p.Type switch
+        {
+            // MotionBlurKernel: size = 2*ceil(Length)+1 → half-size = ceil(Length),
+            // deconvolver pad = ceil(Length) + 1.
+            BlurType.Motion     => (int)Math.Ceiling(p.Length) + 1,
+            // OutOfFocusBlurKernel: size = 2*ceil(Radius)+1 → deconvolver pad = ceil(Radius) + 1.
+            BlurType.OutOfFocus => (int)Math.Ceiling((double)p.Radius) + 1,
+            // GaussianBlurKernel: size ≈ 2*ceil(3*Sigma)+1 → deconvolver pad ≈ ceil(3*Sigma) + 1.
+            BlurType.Gaussian   => (int)Math.Ceiling(3.0 * p.Sigma) + 1,
+            _                   => 1,
+        };
+    }
 
     public event EventHandler<ProxyReadyEventArgs>? ProxyReady;
 
@@ -129,13 +139,21 @@ public sealed class DeblurJobRunner : IDisposable
     /// have a corresponding entry. Keep this switch in sync with the dictionary the caller
     /// injects in MainViewModel.
     /// </summary>
-    private static bool IsNoOp(KernelParams p) => p.Type switch
+    private static bool IsNoOp(KernelParams p)
     {
-        BlurType.Motion     => p.Length < 1f,
-        BlurType.OutOfFocus => p.Radius < 1f,
-        BlurType.Gaussian   => p.Sigma  < 1f,
-        _                   => true,
-    };
+        // BlindDeconvolution estimates its own kernel — the blur-type sliders are
+        // hint values only (currently unused). Never short-circuit it based on the
+        // slider defaults, or blind renders would silently return the raw input.
+        if (p.Algorithm == AlgorithmType.BlindDeconvolution) return false;
+
+        return p.Type switch
+        {
+            BlurType.Motion     => p.Length < 1f,
+            BlurType.OutOfFocus => p.Radius < 1f,
+            BlurType.Gaussian   => p.Sigma  < 1f,
+            _                   => true,
+        };
+    }
 
     /// <summary>
     /// Runs the configured deconvolver against <paramref name="input"/> for kernel parameters
@@ -149,7 +167,13 @@ public sealed class DeblurJobRunner : IDisposable
         // (Richardson-Lucy, Landweber) can check it every iteration. Frequency-domain
         // deconvolvers ignore it — they finish in one shot.
         var options = _options with { CancellationToken = cancellationToken };
-        var psf = _kernels[p.Type].Build(p);
+        // BlindDeconvolution estimates its own PSF and ignores the one passed to
+        // Apply(). Skip building it here — otherwise MotionBlurKernel.Build throws
+        // on Length=0 (the default when a user picks blind without touching the
+        // slider) even though the value is never used.
+        var psf = p.Algorithm == AlgorithmType.BlindDeconvolution
+            ? new float[1, 1] { { 1f } }
+            : _kernels[p.Type].Build(p);
         var deconvIn = input;
 
         if (options.LinearLight)
@@ -222,7 +246,10 @@ public sealed class DeblurJobRunner : IDisposable
                 // flag stays lit and the app appears hung. Skip them in preview — show the
                 // raw proxy — and let the user see the actual iterative result on
                 // full-render (Save-As / press-Render), where the delay is expected.
-                bool isIterativePreview = p.Algorithm is AlgorithmType.RichardsonLucy or AlgorithmType.Landweber;
+                bool isIterativePreview = p.Algorithm is
+                    AlgorithmType.RichardsonLucy
+                    or AlgorithmType.Landweber
+                    or AlgorithmType.BlindDeconvolution;
                 ImageBuffer deconv = (IsNoOp(p) || isIterativePreview) ? proxy : RunDeconvolve(proxy, p);
 
                 int w = deconv.Width, h = deconv.Height;
