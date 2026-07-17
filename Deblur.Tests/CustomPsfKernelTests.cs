@@ -14,17 +14,17 @@ public class CustomPsfKernelTests
     }
 
     [Fact]
-    public void Build_ReturnsStoredPsf()
+    public void Build_ReturnsExactStoredPsfReference()
     {
+        // Reference equality — CustomPsfKernel is a passive holder; any Phase 1.f-2
+        // editor path is expected to clone BEFORE mutating. If someone adds a
+        // defensive clone here it silently doubles the memory cost per render and
+        // would slip past a value-only assertion.
         var k = new CustomPsfKernel();
         var psf = new float[3, 3] { { 0f, 0.25f, 0f }, { 0.25f, 0f, 0.25f }, { 0f, 0.25f, 0f } };
         k.SetPsf(psf);
         var built = k.Build(new KernelParams(BlurType.Custom, 0f, 0f, 0f, 0f, 0f, AlgorithmType.Wiener));
-        Assert.Equal(3, built.GetLength(0));
-        Assert.Equal(3, built.GetLength(1));
-        for (int y = 0; y < 3; y++)
-            for (int x = 0; x < 3; x++)
-                Assert.Equal(psf[y, x], built[y, x]);
+        Assert.Same(psf, built);
     }
 
     [Fact]

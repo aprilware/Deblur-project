@@ -9,13 +9,9 @@
         Title="Deblur" Height="720" Width="1200"
         AllowDrop="True">
     <Window.DataContext><vm:MainViewModel/></Window.DataContext>
-    <Window.Resources>
-        <ObjectDataProvider x:Key="BlurTypeValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
-            <ObjectDataProvider.MethodParameters>
-                <x:Type TypeName="engine:BlurType"/>
-            </ObjectDataProvider.MethodParameters>
-        </ObjectDataProvider>
-    </Window.Resources>
+    <!-- BlurType ComboBox binds to MainViewModel.SelectableBlurTypes (excludes Custom).
+         No shared ObjectDataProvider resource is needed here. -->
+
 
     <Window.InputBindings>
         <!-- ApplicationCommands.Open ships with Ctrl+O built in; SaveAs has no default gesture, wire it here. -->
@@ -79,7 +75,10 @@
 
                 <StackPanel Grid.Column="1" Margin="12">
                     <TextBlock Text="Blur type" FontWeight="Bold" Margin="0,0,0,4"/>
-                    <ComboBox ItemsSource="{Binding Source={StaticResource BlurTypeValues}}"
+                    <!-- Bind to VM's SelectableBlurTypes (Motion/OutOfFocus/Gaussian).
+                         BlurType.Custom is deliberately excluded — it's only reachable
+                         via the Accept-kernel workflow, never manual selection. -->
+                    <ComboBox ItemsSource="{Binding SelectableBlurTypes}"
                               SelectedItem="{Binding SelectedBlurType}"/>
 
                     <TextBlock Text="Algorithm" FontWeight="Bold" Margin="0,12,0,4"/>

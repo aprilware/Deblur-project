@@ -55,6 +55,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly CustomPsfKernel _customPsfKernel;
     private int _customPsfSequence;
 
+    // ComboBox binds to this instead of Enum.GetValues so Custom stays hidden.
+    // Custom is only reachable via AcceptBlindKernel, never manual selection —
+    // manual switch to Custom without a prior Accept would call
+    // CustomPsfKernel.Build on a null-or-stale PSF and crash the WorkerLoop.
+    public static IReadOnlyList<BlurType> SelectableBlurTypes { get; } = new[]
+    {
+        BlurType.Motion, BlurType.OutOfFocus, BlurType.Gaussian,
+    };
+
     [ObservableProperty] private BlurType _selectedBlurType = BlurType.Motion;
     [ObservableProperty] private AlgorithmType _selectedAlgorithm = AlgorithmType.Wiener;
     [ObservableProperty] private float _angle;
@@ -231,6 +240,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EstimatedKernel = null;
         CustomPsfAcceptedRecord = null;
         AcceptedCustomKernelDisplay = null;
+        // Force the blur type off Custom for the new image — the accepted PSF from a
+        // prior image's blind run is no longer relevant. _customPsfKernel's stored PSF
+        // is intentionally NOT nulled (avoids WorkerLoop null-race); it just becomes
+        // unreachable until the next Accept.
+        if (SelectedBlurType == BlurType.Custom) SelectedBlurType = BlurType.Motion;
 
         Reset();
     }
@@ -535,10 +549,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         // Stored PSF stays in _customPsfKernel — prevents a null race with an in-flight
         // WorkerLoop preview. Only switch the type back. Next Accept replaces the stored
-        // PSF; a switch back to Custom without a re-Accept would apply the OLD stored PSF,
-        // which is why the type combobox never surfaces Custom directly (it's only
-        // reachable via Accept, and the Custom panel is only visible when IsCustomSelected).
+        // PSF. Also clear the display observables so a UI path that surfaces the Custom
+        // panel again (only possible via a fresh Accept, since the type combobox excludes
+        // Custom) doesn't show stale acceptance data.
         SelectedBlurType = BlurType.Motion;
+        CustomPsfAcceptedRecord = null;
+        AcceptedCustomKernelDisplay = null;
         InvalidateFullResCache();
     }
 

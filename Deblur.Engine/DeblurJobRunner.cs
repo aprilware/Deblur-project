@@ -38,6 +38,11 @@ public sealed class DeblurJobRunner : IDisposable
         // Match the finest kernel radius so the ROI extract has enough context for the
         // multi-scale MAP loop.
         if (p.Algorithm == AlgorithmType.BlindDeconvolution) return 32;
+        // Custom PSF (Phase 1.f-1): the accepted kernel is up to 31x31 (blind's finest
+        // window); ROI extract needs the same context margin. Without this branch the
+        // switch's `_ => 1` fallthrough would leave only 2 px of context — the accepted
+        // kernel's FFT pad would exceed it and recovery collapses.
+        if (p.Type == BlurType.Custom) return 32;
 
         return p.Type switch
         {
@@ -97,7 +102,10 @@ public sealed class DeblurJobRunner : IDisposable
     /// </summary>
     public void SetProxyScale(float scale)
     {
-        _proxyScale = scale;
+        // Under _lock so a WorkerLoop cycle that grabbed the new _proxy (also under
+        // _lock) can't observe a stale _proxyScale on the same cycle. Both fields
+        // update atomically from the UI thread's LoadImageFromBytes sequence.
+        lock (_lock) _proxyScale = scale;
     }
 
     public void Request(KernelParams p)
@@ -201,9 +209,12 @@ public sealed class DeblurJobRunner : IDisposable
         // resolution because their params are pre-scaled by the caller (raw for
         // preview, inverse-proxy-scaled for full-res); Custom has no such scaling
         // knob, so the preview path must explicitly downscale the full-res kernel
-        // to match the proxy image dimensions.
-        if (p.Type == BlurType.Custom && isPreview && _proxyScale < 1f)
-            psf = KernelResample.Downscale(psf, _proxyScale);
+        // to match the proxy image dimensions. Snapshot _proxyScale under _lock
+        // so a concurrent SetProxyScale can't tear the read.
+        float proxyScaleSnap;
+        lock (_lock) proxyScaleSnap = _proxyScale;
+        if (p.Type == BlurType.Custom && isPreview && proxyScaleSnap < 1f)
+            psf = KernelResample.Downscale(psf, proxyScaleSnap);
 
         var deconvIn = input;
 
