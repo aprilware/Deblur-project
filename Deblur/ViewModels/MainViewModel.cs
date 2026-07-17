@@ -52,6 +52,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly IImageCodec _codec = new WicImageCodec();
     private readonly Gdi8BitImageCodec _fallbackCodec = new();
     private readonly BlindDeconvolutionDeconvolver _blindDeconvolver;
+    private readonly CustomPsfKernel _customPsfKernel;
+    private int _customPsfSequence;
 
     [ObservableProperty] private BlurType _selectedBlurType = BlurType.Motion;
     [ObservableProperty] private AlgorithmType _selectedAlgorithm = AlgorithmType.Wiener;
@@ -74,6 +76,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private NoiseSuggestionVm? _noiseSuggestion;
     [ObservableProperty] private float[,]? _estimatedKernel;
 
+    // Set by AcceptBlindKernel: an independent audit clone of the accepted kernel, distinct
+    // from the runtime clone handed to _customPsfKernel. Backs the Custom panel's PsfDisplay.
+    [ObservableProperty] private float[,]? _acceptedCustomKernelDisplay;
+
+    // The examiner-facing "Accepted from…" record for the most recent AcceptBlindKernel call.
+    [ObservableProperty] private SuggestionRecord? _customPsfAcceptedRecord;
+
     // Wavelet-noise-estimator's accepted sigma^2, threaded into KernelParams.NoiseVariance
     // for CLS v2's discrepancy-principle gamma bisection. Null until the examiner accepts
     // a noise suggestion; reset to null on every new image load.
@@ -89,6 +98,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public bool IsMotionSelected     => SelectedBlurType == BlurType.Motion;
     public bool IsOutOfFocusSelected => SelectedBlurType == BlurType.OutOfFocus;
     public bool IsGaussianSelected   => SelectedBlurType == BlurType.Gaussian;
+    public bool IsCustomSelected     => SelectedBlurType == BlurType.Custom;
     public bool HasImage => _proxy is not null;
     public bool IsWienerSelected   => SelectedAlgorithm == AlgorithmType.Wiener;
     public bool IsTikhonovSelected => SelectedAlgorithm == AlgorithmType.Tikhonov;
@@ -103,6 +113,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             [BlurType.Motion]     = new MotionBlurKernel(),
             [BlurType.OutOfFocus] = new OutOfFocusBlurKernel(),
             [BlurType.Gaussian]   = new GaussianBlurKernel(),
+            [BlurType.Custom]     = _customPsfKernel = new CustomPsfKernel(),
         };
         var deconvolvers = new Dictionary<AlgorithmType, IDeconvolver>
         {
@@ -154,6 +165,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsMotionSelected));
         OnPropertyChanged(nameof(IsOutOfFocusSelected));
         OnPropertyChanged(nameof(IsGaussianSelected));
+        OnPropertyChanged(nameof(IsCustomSelected));
 
         // Preserve each type's own params across switches; the user can hit Reset
         // if they want to clear the active type.
@@ -217,6 +229,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         NoiseSuggestion = null;
         _acceptedNoiseVariance = null;
         EstimatedKernel = null;
+        CustomPsfAcceptedRecord = null;
+        AcceptedCustomKernelDisplay = null;
 
         Reset();
     }
@@ -331,7 +345,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private KernelParams BuildCurrentParams()
         => new KernelParams(SelectedBlurType, Angle, Length, Smoothness, Radius, Sigma, SelectedAlgorithm,
-                             NoiseVariance: _acceptedNoiseVariance);
+                             NoiseVariance: _acceptedNoiseVariance,
+                             KernelId: SelectedBlurType == BlurType.Custom ? _customPsfSequence : null);
 
     // ---- Automatic parameter estimation (Phase 1.d) -----------------------------------
     //
@@ -457,6 +472,74 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (NoiseSuggestion is null) return;
         MarkSuggestionDismissed(WaveletNoiseEstimator.Id);
         NoiseSuggestion = null;
+    }
+
+    // ---- Blind-kernel handoff (Phase 1.f-1) --------------------------------------------
+    //
+    // Accept clones the blind-estimated kernel TWICE: once as the runtime PSF handed to
+    // _customPsfKernel (consumed by future renders), once as an independent audit copy
+    // stored on the SuggestionRecord / AcceptedCustomKernelDisplay. Neither clone aliases
+    // EstimatedKernel or each other, so a later algorithm switch nulling EstimatedKernel
+    // (see OnSelectedAlgorithmChanged) cannot mutate what was accepted.
+
+    private static float[,] CloneKernel(float[,] src)
+    {
+        int h = src.GetLength(0), w = src.GetLength(1);
+        var dst = new float[h, w];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                dst[y, x] = src[y, x];
+        return dst;
+    }
+
+    private bool CanAcceptBlindKernel() => EstimatedKernel is not null;
+
+    // EstimatedKernel isn't consumed by CanAcceptBlindKernel's own generated dependency
+    // wiring ([RelayCommand] doesn't auto-listen to ObservableProperty changes), so this
+    // partial re-evaluates CanExecute explicitly, matching the OnMotionSuggestionChanged
+    // pattern above.
+    partial void OnEstimatedKernelChanged(float[,]? value)
+        => AcceptBlindKernelCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand(CanExecute = nameof(CanAcceptBlindKernel))]
+    private void AcceptBlindKernel()
+    {
+        if (EstimatedKernel is null) return;
+        var runtimeCopy = CloneKernel(EstimatedKernel);
+        var auditCopy   = CloneKernel(EstimatedKernel);
+
+        _customPsfKernel.SetPsf(runtimeCopy);
+        // Bump BEFORE the SelectedBlurType/SelectedAlgorithm switches below — those trigger
+        // PushCurrentParams/PushSnapshot via existing partials, and BuildCurrentParams reads
+        // _customPsfSequence into KernelParams.KernelId, so the id must already be current.
+        _customPsfSequence++;
+
+        var record = new SuggestionRecord(
+            BlindDeconvolutionDeconvolver.MetadataId,
+            BlindDeconvolutionDeconvolver.MetadataVersion,
+            (float[,]?)auditCopy,
+            Confidence: (float?)null, // examiner acceptance is encoded by AcceptedAtUtc, not a fabricated confidence.
+            SuggestedAtUtc: DateTime.UtcNow)
+            with { AcceptedAtUtc = DateTime.UtcNow };
+        SuggestionHistory.Add(record);
+        CustomPsfAcceptedRecord = record;
+        AcceptedCustomKernelDisplay = auditCopy;
+
+        SelectedBlurType = BlurType.Custom;
+        SelectedAlgorithm = AlgorithmType.Wiener;
+        InvalidateFullResCache();
+    }
+
+    [RelayCommand]
+    private void ClearCustomPsf()
+    {
+        // Stored PSF stays in _customPsfKernel — prevents a null race with an in-flight
+        // WorkerLoop preview. Only switch the type back. Next Accept replaces the stored
+        // PSF; a switch back to Custom without a re-Accept would apply the OLD stored PSF,
+        // which is why the type combobox never surfaces Custom directly (it's only
+        // reachable via Accept, and the Custom panel is only visible when IsCustomSelected).
+        SelectedBlurType = BlurType.Motion;
+        InvalidateFullResCache();
     }
 
     // Searches backwards for the most recent SuggestionHistory entry from the given
