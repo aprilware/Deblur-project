@@ -205,6 +205,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SelectedRoiOverlayRect = null;
         PreviewBitmap = ImageBufferInterop.NewCompatibleBitmap(pw, ph);
         _runner.SetProxy(_proxy);
+        _runner.SetProxyScale(_proxyScale);
         OnPropertyChanged(nameof(HasImage));
         _history.Clear();
         OnPropertyChanged(nameof(CanUndo));

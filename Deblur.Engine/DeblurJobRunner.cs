@@ -1,3 +1,5 @@
+using Deblur.Engine.Imaging;
+
 namespace Deblur.Engine;
 
 public sealed class ProxyReadyEventArgs : EventArgs
@@ -19,6 +21,7 @@ public sealed class DeblurJobRunner : IDisposable
     private ImageBuffer? _proxy;
     private KernelParams? _pending;
     private volatile bool _running = true;
+    private float _proxyScale = 1f;
 
     public RegionOfInterest? Roi { get; set; }
 
@@ -83,6 +86,20 @@ public sealed class DeblurJobRunner : IDisposable
         lock (_lock) _proxy = proxy;
     }
 
+    /// <summary>
+    /// Records the current proxy-to-full-res scale (proxyWidth / fullWidth) so
+    /// WorkerLoop's live-preview path can downscale full-res Custom PSF kernels
+    /// (via <see cref="KernelResample.Downscale"/>) to match the proxy resolution.
+    /// Motion/OutOfFocus/Gaussian kernels don't need this — they're built directly
+    /// at proxy resolution from raw (unscaled) params. Custom kernels are always
+    /// full-res (accepted from a full-res blind run), so this is the only path
+    /// that needs explicit resampling.
+    /// </summary>
+    public void SetProxyScale(float scale)
+    {
+        _proxyScale = scale;
+    }
+
     public void Request(KernelParams p)
     {
         lock (_lock) _pending = p;
@@ -145,6 +162,10 @@ public sealed class DeblurJobRunner : IDisposable
         // hint values only (currently unused). Never short-circuit it based on the
         // slider defaults, or blind renders would silently return the raw input.
         if (p.Algorithm == AlgorithmType.BlindDeconvolution) return false;
+        // Custom's presence implies a kernel is already set on the CustomPsfKernel
+        // instance (via AcceptBlindKernel) — there's no slider-derived no-op condition
+        // to check, unlike Motion/OutOfFocus/Gaussian's length/radius/sigma thresholds.
+        if (p.Type == BlurType.Custom) return false;
 
         return p.Type switch
         {
@@ -161,7 +182,7 @@ public sealed class DeblurJobRunner : IDisposable
     /// <see cref="_options"/>. Order: sRGB -> linear -> YCbCr -> deconvolve Y -> recompose to
     /// linear RGB -> sRGB.
     /// </summary>
-    private ImageBuffer RunDeconvolve(ImageBuffer input, KernelParams p, CancellationToken cancellationToken = default)
+    private ImageBuffer RunDeconvolve(ImageBuffer input, KernelParams p, CancellationToken cancellationToken = default, bool isPreview = false)
     {
         // Thread the CancellationToken into options so iterative deconvolvers
         // (Richardson-Lucy, Landweber) can check it every iteration. Frequency-domain
@@ -174,6 +195,16 @@ public sealed class DeblurJobRunner : IDisposable
         var psf = p.Algorithm == AlgorithmType.BlindDeconvolution
             ? new float[1, 1] { { 1f } }
             : _kernels[p.Type].Build(p);
+
+        // Custom PSFs are always accepted at full resolution (from a full-res blind
+        // run). Motion/OutOfFocus/Gaussian kernels are built directly at the right
+        // resolution because their params are pre-scaled by the caller (raw for
+        // preview, inverse-proxy-scaled for full-res); Custom has no such scaling
+        // knob, so the preview path must explicitly downscale the full-res kernel
+        // to match the proxy image dimensions.
+        if (p.Type == BlurType.Custom && isPreview && _proxyScale < 1f)
+            psf = KernelResample.Downscale(psf, _proxyScale);
+
         var deconvIn = input;
 
         if (options.LinearLight)
@@ -250,7 +281,7 @@ public sealed class DeblurJobRunner : IDisposable
                     AlgorithmType.RichardsonLucy
                     or AlgorithmType.Landweber
                     or AlgorithmType.BlindDeconvolution;
-                ImageBuffer deconv = (IsNoOp(p) || isIterativePreview) ? proxy : RunDeconvolve(proxy, p);
+                ImageBuffer deconv = (IsNoOp(p) || isIterativePreview) ? proxy : RunDeconvolve(proxy, p, isPreview: true);
 
                 int w = deconv.Width, h = deconv.Height;
                 var bgra = new byte[w * h * 4];

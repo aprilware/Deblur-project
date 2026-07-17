@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using Deblur.Engine;
+using Deblur.Engine.Imaging;
+using Deblur.Engine.Validation;
 using Deblur.Tests.TestHelpers;
 using Xunit;
 
@@ -415,5 +417,96 @@ public class DeblurJobRunnerTests
                 proxyScale: 0.25f,
                 progress: null,
                 cancellationToken: cts.Token));
+    }
+
+    [Fact]
+    public async Task RenderFullAsync_CustomBlurType_DispatchesToCustomKernel()
+    {
+        var customKernel = new CustomPsfKernel();
+        customKernel.SetPsf(new float[3, 3] { { 0f, 0.25f, 0f }, { 0.25f, 0f, 0.25f }, { 0f, 0.25f, 0f } });
+        var recordingDeconv = new RecordingStubDeconvolver();
+        var kernels = new Dictionary<BlurType, IBlurKernel>
+        {
+            [BlurType.Motion] = new RecordingStubKernel(),
+            [BlurType.Custom] = customKernel,
+        };
+        var deconvs = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener] = recordingDeconv,
+            [AlgorithmType.Tikhonov] = recordingDeconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvs);
+        var img = SyntheticImages.Checkerboard(32, 32, 4);
+
+        await runner.RenderFullAsync(img,
+            new KernelParams(BlurType.Custom, 0f, 0f, 0.005f, 0f, 0f, AlgorithmType.Wiener, KernelId: 1),
+            proxyScale: 1f);
+
+        Assert.NotEmpty(recordingDeconv.Applied);
+    }
+
+    [Fact]
+    public void CustomKernel_ProxyPreview_MatchesFullResResampled_WithinTolerance()
+    {
+        // Deterministic small kernel (Gaussian-shaped, 5x5).
+        var kernel = new float[5, 5];
+        float sum = 0;
+        for (int y = 0; y < 5; y++)
+            for (int x = 0; x < 5; x++)
+            {
+                kernel[y, x] = MathF.Exp(-((y - 2) * (y - 2) + (x - 2) * (x - 2)) / 2f);
+                sum += kernel[y, x];
+            }
+        for (int y = 0; y < 5; y++)
+            for (int x = 0; x < 5; x++)
+                kernel[y, x] /= sum;
+
+        // Apply to full-res via Wiener + Custom.
+        var full = SyntheticImages.Checkerboard(128, 128, 16);
+        var custom = new CustomPsfKernel();
+        custom.SetPsf(kernel);
+        var kernels = new Dictionary<BlurType, IBlurKernel>
+        {
+            [BlurType.Custom] = custom,
+            [BlurType.Motion] = new MotionBlurKernel(),
+        };
+        var deconvs = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener] = new WienerDeconvolver(),
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvs);
+
+        // Proxy is 1/4 scale.
+        var proxy = AreaResample.Box(full, 32, 32);
+        runner.SetProxy(proxy);
+        runner.SetProxyScale(0.25f);
+
+        var p = new KernelParams(BlurType.Custom, 0f, 0f, 0.005f, 0f, 0f, AlgorithmType.Wiener, KernelId: 1);
+        // Full-res render — synchronous by awaiting the task inline.
+        var fullOut = runner.RenderFullAsync(full, p, proxyScale: 0.25f).GetAwaiter().GetResult();
+
+        // Proxy preview — dispatch via Request then wait for ProxyReady.
+        ImageBuffer? previewOut = null;
+        using var got = new ManualResetEventSlim(false);
+        runner.ProxyReady += (_, e) =>
+        {
+            previewOut = new ImageBuffer(e.Width, e.Height);
+            // Bgra → back to float R/G/B just for comparison.
+            for (int y = 0; y < e.Height; y++)
+                for (int x = 0; x < e.Width; x++)
+                {
+                    int o = (y * e.Width + x) * 4;
+                    previewOut.B[y * e.Width + x] = e.Bgra[o] / 255f;
+                    previewOut.G[y * e.Width + x] = e.Bgra[o + 1] / 255f;
+                    previewOut.R[y * e.Width + x] = e.Bgra[o + 2] / 255f;
+                }
+            got.Set();
+        };
+        runner.Request(p);
+        Assert.True(got.Wait(TimeSpan.FromSeconds(5)));
+
+        var fullResampled = AreaResample.Box(fullOut, 32, 32);
+        var psnr = Quality.Psnr(previewOut!, fullResampled);
+        Assert.True(psnr >= 30.0, $"proxy preview PSNR vs full resampled: {psnr:F2} dB < 30");
     }
 }
