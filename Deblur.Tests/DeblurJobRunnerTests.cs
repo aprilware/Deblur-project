@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using Deblur.Engine;
+using Deblur.Engine.Imaging;
+using Deblur.Engine.Validation;
 using Deblur.Tests.TestHelpers;
 using Xunit;
 
@@ -415,5 +417,103 @@ public class DeblurJobRunnerTests
                 proxyScale: 0.25f,
                 progress: null,
                 cancellationToken: cts.Token));
+    }
+
+    [Fact]
+    public async Task RenderFullAsync_CustomBlurType_DispatchesToCustomKernel()
+    {
+        var customKernel = new CustomPsfKernel();
+        customKernel.SetPsf(new float[3, 3] { { 0f, 0.25f, 0f }, { 0.25f, 0f, 0.25f }, { 0f, 0.25f, 0f } });
+        var recordingDeconv = new RecordingStubDeconvolver();
+        var kernels = new Dictionary<BlurType, IBlurKernel>
+        {
+            [BlurType.Motion] = new RecordingStubKernel(),
+            [BlurType.Custom] = customKernel,
+        };
+        var deconvs = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener] = recordingDeconv,
+            [AlgorithmType.Tikhonov] = recordingDeconv,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvs);
+        var img = SyntheticImages.Checkerboard(32, 32, 4);
+
+        await runner.RenderFullAsync(img,
+            new KernelParams(BlurType.Custom, 0f, 0f, 0.005f, 0f, 0f, AlgorithmType.Wiener, KernelId: 1),
+            proxyScale: 1f);
+
+        Assert.NotEmpty(recordingDeconv.Applied);
+    }
+
+    // Captures the psf argument each deconvolver call receives so tests can verify
+    // that preview and full-res dispatch pass appropriately-sized kernels to Apply.
+    private sealed class PsfCapturingStubDeconvolver : IDeconvolver
+    {
+        public AlgorithmMetadata Metadata { get; } = new(
+            Id: "stub", Version: "0", DisplayName: "Stub",
+            DescriptionMarkdown: "test-only stub", LiteratureCitation: "n/a");
+        public readonly System.Collections.Concurrent.ConcurrentBag<(int H, int W)> ReceivedPsfDims = new();
+        public ImageBuffer Apply(ImageBuffer input, float[,] psf, DeconvolutionParams p, PipelineOptions? options = null)
+        {
+            ReceivedPsfDims.Add((psf.GetLength(0), psf.GetLength(1)));
+            return new ImageBuffer(input.Width, input.Height,
+                (float[])input.R.Clone(), (float[])input.G.Clone(), (float[])input.B.Clone());
+        }
+    }
+
+    [Fact]
+    public void CustomKernel_PreviewDispatchesDownscaledKernel_FullResDispatchesFullSize()
+    {
+        // Contract this locks in: the Custom PSF stored at full-resolution scale
+        // reaches the deconvolver at proxy scale in preview and at full scale in
+        // full-res render. Numerical PSNR agreement between preview and full-res
+        // is NOT the contract — Wiener deconvolution doesn't commute with area-
+        // average resampling by construction, so no downstream numerical
+        // equivalence would hold even with a perfectly-correct implementation.
+        // The forensic property is dispatch: "preview uses a downscaled kernel,
+        // full-res uses the accepted kernel as-is."
+        var fullKernel = new float[21, 21];  // odd, 21x21 accepted full-res kernel
+        fullKernel[10, 10] = 1f;
+        var custom = new CustomPsfKernel();
+        custom.SetPsf(fullKernel);
+
+        var stub = new PsfCapturingStubDeconvolver();
+        var kernels = new Dictionary<BlurType, IBlurKernel>
+        {
+            [BlurType.Custom] = custom,
+            [BlurType.Motion] = new MotionBlurKernel(),
+        };
+        var deconvs = new Dictionary<AlgorithmType, IDeconvolver>
+        {
+            [AlgorithmType.Wiener] = stub,
+        };
+        using var runner = new DeblurJobRunner(kernels, deconvs);
+
+        var full = SyntheticImages.Checkerboard(128, 128, 16);
+        var proxy = AreaResample.Box(full, 32, 32);
+        runner.SetProxy(proxy);
+        runner.SetProxyScale(0.25f);
+
+        var p = new KernelParams(BlurType.Custom, 0f, 0f, 0.005f, 0f, 0f, AlgorithmType.Wiener, KernelId: 1);
+
+        // Full-res render first — should receive the 21x21 kernel as-is.
+        _ = runner.RenderFullAsync(full, p, proxyScale: 0.25f).GetAwaiter().GetResult();
+
+        // Then a preview — should receive a downscaled (~5-7 pixel) kernel.
+        using var got = new ManualResetEventSlim(false);
+        runner.ProxyReady += (_, _) => got.Set();
+        runner.Request(p);
+        Assert.True(got.Wait(TimeSpan.FromSeconds(5)));
+
+        var dims = stub.ReceivedPsfDims.ToArray();
+        Assert.Equal(2, dims.Length);
+        // Both paths received something; verify sizes distinguish preview from full-res.
+        var maxDim = dims.OrderByDescending(d => d.H).First();
+        var minDim = dims.OrderByDescending(d => d.H).Last();
+        Assert.Equal((21, 21), maxDim);   // Full-res: accepted kernel unchanged.
+        Assert.True(minDim.H < 21 && minDim.W < 21,
+            $"Preview kernel {minDim.H}x{minDim.W} was not downscaled from 21x21.");
+        Assert.Equal(1, minDim.H % 2);    // Downscaled kernel is odd.
+        Assert.Equal(1, minDim.W % 2);
     }
 }

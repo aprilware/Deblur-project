@@ -5,4 +5,5 @@ public enum BlurType
     Motion,
     OutOfFocus,
     Gaussian,
+    Custom,
 }

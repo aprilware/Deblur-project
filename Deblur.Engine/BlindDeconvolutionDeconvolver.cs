@@ -5,9 +5,12 @@ namespace Deblur.Engine;
 
 public sealed class BlindDeconvolutionDeconvolver : IDeconvolver
 {
+    public const string MetadataId = "blind-cho-lee";
+    public const string MetadataVersion = "1.0";
+
     public AlgorithmMetadata Metadata { get; } = new(
-        Id: "blind-cho-lee",
-        Version: "1.0",
+        Id: MetadataId,
+        Version: MetadataVersion,
         DisplayName: "Blind deconvolution (MAP, multi-scale)",
         DescriptionMarkdown:
             "Multi-scale MAP-alternating blind deconvolution. Given a blurred image with " +

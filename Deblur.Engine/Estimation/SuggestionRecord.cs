@@ -4,7 +4,7 @@ public sealed record SuggestionRecord(
     string EstimatorId,
     string EstimatorVersion,
     object Value,
-    float Confidence,
+    float? Confidence,
     DateTime SuggestedAtUtc)
 {
     public DateTime? AcceptedAtUtc { get; init; }

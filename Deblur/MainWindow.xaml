@@ -9,13 +9,9 @@
         Title="Deblur" Height="720" Width="1200"
         AllowDrop="True">
     <Window.DataContext><vm:MainViewModel/></Window.DataContext>
-    <Window.Resources>
-        <ObjectDataProvider x:Key="BlurTypeValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
-            <ObjectDataProvider.MethodParameters>
-                <x:Type TypeName="engine:BlurType"/>
-            </ObjectDataProvider.MethodParameters>
-        </ObjectDataProvider>
-    </Window.Resources>
+    <!-- BlurType ComboBox binds to MainViewModel.SelectableBlurTypes (excludes Custom).
+         No shared ObjectDataProvider resource is needed here. -->
+
 
     <Window.InputBindings>
         <!-- ApplicationCommands.Open ships with Ctrl+O built in; SaveAs has no default gesture, wire it here. -->
@@ -79,7 +75,10 @@
 
                 <StackPanel Grid.Column="1" Margin="12">
                     <TextBlock Text="Blur type" FontWeight="Bold" Margin="0,0,0,4"/>
-                    <ComboBox ItemsSource="{Binding Source={StaticResource BlurTypeValues}}"
+                    <!-- Bind to VM's SelectableBlurTypes (Motion/OutOfFocus/Gaussian).
+                         BlurType.Custom is deliberately excluded — it's only reachable
+                         via the Accept-kernel workflow, never manual selection. -->
+                    <ComboBox ItemsSource="{Binding SelectableBlurTypes}"
                               SelectedItem="{Binding SelectedBlurType}"/>
 
                     <TextBlock Text="Algorithm" FontWeight="Bold" Margin="0,12,0,4"/>
@@ -167,6 +166,26 @@
                         </StackPanel>
                     </Grid>
 
+                    <Grid Margin="0,12,0,0" Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="Custom PSF (accepted from blind)"
+                                       FontWeight="Bold" Margin="0,0,0,4"/>
+                            <controls:PsfDisplay Kernel="{Binding AcceptedCustomKernelDisplay}"
+                                                 HorizontalAlignment="Left"/>
+                            <TextBlock TextWrapping="Wrap" Margin="0,4,0,0" FontSize="11" Foreground="#555">
+                                <Run Text="Accepted from: "/>
+                                <Run Text="{Binding CustomPsfAcceptedRecord.EstimatorId, Mode=OneWay}"/>
+                                <Run Text=" v"/>
+                                <Run Text="{Binding CustomPsfAcceptedRecord.EstimatorVersion, Mode=OneWay}"/>
+                                <Run Text=" at "/>
+                                <Run Text="{Binding CustomPsfAcceptedRecord.AcceptedAtUtc, StringFormat={}{0:yyyy-MM-dd HH:mm:ss} UTC, Mode=OneWay}"/>
+                            </TextBlock>
+                            <Button Content="Clear (switch back to Motion)"
+                                    Command="{Binding ClearCustomPsfCommand}"
+                                    Margin="0,8,0,0" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Grid>
+
                     <StackPanel Margin="0,12,0,0" Visibility="{Binding HasImage, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="{Binding SelectedAlgorithm, Converter={StaticResource AlgLabel}}" Margin="0,4,0,0"/>
                         <Slider Minimum="0.0001" Maximum="0.1" SmallChange="0.0005" Value="{Binding Smoothness}"/>
@@ -215,6 +234,10 @@
                         <controls:PsfDisplay Kernel="{Binding EstimatedKernel}"
                                              Visibility="{Binding SelectedAlgorithm, Converter={StaticResource BlindAlgoToVis}}"
                                              HorizontalAlignment="Left" Margin="0,12,0,4"/>
+                        <Button Content="Accept kernel" Command="{Binding AcceptBlindKernelCommand}"
+                                Margin="0,4,0,0" HorizontalAlignment="Left"
+                                Visibility="{Binding SelectedAlgorithm, Converter={StaticResource BlindAlgoToVis}}"
+                                ToolTip="Save the estimated kernel as a Custom PSF and switch to Wiener for evidentiary output"/>
                         <Button Content="Render full resolution" Margin="0,8,0,0" Command="{x:Static local:AppCommands.RenderFull}"/>
                     </StackPanel>
 

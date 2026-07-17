@@ -125,6 +125,40 @@ public class BlindDeconvolutionDeconvolverTests
             blind.Apply(gt, new float[1, 1] { { 1f } }, new DeconvolutionParams(K: 1e-3f), opts));
     }
 
+    [Fact]
+    public void Deterministic_TwoConsecutiveRuns_ProduceByteIdenticalKernelAndOutput()
+    {
+        var gt = SyntheticImages.TexturedNoise(128, 128, seed: 42);
+        var psf = new MotionBlurKernel().Build(
+            new KernelParams(BlurType.Motion, 30f, 8f, 0f, 0f, 0f, AlgorithmType.BlindDeconvolution));
+        var blurred = SyntheticBlur.Apply(gt, psf, gaussianNoiseSigma: 0f, seed: 42);
+
+        var blind1 = new BlindDeconvolutionDeconvolver();
+        var out1 = blind1.Apply(blurred, new float[1, 1] { { 1f } },
+            new DeconvolutionParams(K: 1e-3f), PipelineOptions.Default);
+        var k1 = blind1.LastEstimatedKernel!;
+
+        var blind2 = new BlindDeconvolutionDeconvolver();
+        var out2 = blind2.Apply(blurred, new float[1, 1] { { 1f } },
+            new DeconvolutionParams(K: 1e-3f), PipelineOptions.Default);
+        var k2 = blind2.LastEstimatedKernel!;
+
+        Assert.Equal(k1.GetLength(0), k2.GetLength(0));
+        Assert.Equal(k1.GetLength(1), k2.GetLength(1));
+        for (int y = 0; y < k1.GetLength(0); y++)
+            for (int x = 0; x < k1.GetLength(1); x++)
+                Assert.Equal(k1[y, x], k2[y, x]);
+
+        Assert.Equal(out1.Width, out2.Width);
+        Assert.Equal(out1.Height, out2.Height);
+        for (int i = 0; i < out1.PixelCount; i++)
+        {
+            Assert.Equal(out1.R[i], out2.R[i]);
+            Assert.Equal(out1.G[i], out2.G[i]);
+            Assert.Equal(out1.B[i], out2.B[i]);
+        }
+    }
+
     private static float CosineSimilarityAlignedByCentroid(float[,] a, float[,] b)
     {
         // Center both by centroid, then cosine similarity on overlap.
